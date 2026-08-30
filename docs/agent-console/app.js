@@ -42,7 +42,7 @@ const modelDot=$('#modelDot'), modelStateEl=$('#modelState'), modelName=$('#mode
 const agentSel=$('#agentSel');
 
 // WebLLM — Worker (one model, kept in worker)
-let webllmWorker=null, webllmReady=false, webllmLoading=false, webllmModel="Phi-3-mini-4k-instruct-q4f16_1-MLC";
+let webllmWorker=null, webllmReady=false, webllmLoading=false, webllmModel="Llama-3.2-1B-Instruct-q4f16_1-MLC"; // 1B, smaller than Phi-3-mini for reliable load; user can switch to Phi-3-mini or SmolLM2-360M
 const ABI_SYSTEM = `You are the instruct model for Perplexity Macro VM. Emit ONLY one JSON object per turn, no prose, no markdown, matching Instruction ABI:
 {"op":"python","code":"..."} | {"op":"tool","name":"tavily.search|wikipedia|dictionary|mathematica|fetch","args":{"query":"..."}} | {"op":"vm","instruction":"..."} | {"op":"final","content":"..."}
 Rules: one op per turn, code must be valid Python, args.query short, prefer python for computation then tool for evidence then final with synthesis. VM owns control, WASM Box is execution boundary.`;
@@ -180,54 +180,112 @@ async function dispatchABI(op){ currentTaskEl.textContent= JSON.stringify(op).sl
 async function dispatchTool(cap,args){ return dispatchABI(cap.startsWith('python')?{op:'python',code:args.code||args.query||''}:{op:'tool',name:cap,args}) }
 window.dispatchTool=dispatchTool; window.dispatchABI=dispatchABI; window.macrogrokInfer4=macrogrokInfer4;
 
-// WebLLM — Worker
+// WebLLM — Worker (robust: onerror + main-thread fallback + WebGPU check)
+let webllmEngine=null; // main-thread fallback engine
 function createWorker(){
+  // Use esm.sh (more worker-friendly) with esm.run fallback; keep blob module
   const code=`
-import {CreateMLCEngine} from "https://esm.run/@mlc-ai/web-llm@0.2.79";
+import {CreateMLCEngine} from "https://esm.sh/@mlc-ai/web-llm@0.2.79?bundle";
 let engine=null;
 self.onmessage = async (e)=>{
   const d=e.data;
   if(d.type==='load'){
     try{
+      if(!self.navigator || !self.navigator.gpu){
+        // still try — CreateMLCEngine will throw a clear WebGPU error
+      }
       engine = await CreateMLCEngine(d.model, {initProgressCallback:(p)=> self.postMessage({type:'progress', text:p.text, progress:p.progress})});
       self.postMessage({type:'ready', model:d.model});
-    }catch(err){ self.postMessage({type:'error', error:String(err)}) }
+    }catch(err){ self.postMessage({type:'error', error:String(err && err.message || err)}) }
   }
   if(d.type==='generate'){
     try{
+      if(!engine) throw new Error('engine not loaded');
       const r = await engine.chat.completions.create({messages:d.messages, temperature: d.temperature??0.2, max_tokens: d.max_tokens??512});
       self.postMessage({type:'reply', id:d.id, content: r.choices[0].message.content});
-    }catch(err){ self.postMessage({type:'error', error:String(err), id:d.id}) }
+    }catch(err){ self.postMessage({type:'error', error:String(err && err.message || err), id:d.id}) }
   }
 };
 `;
   const blob=new Blob([code],{type:'text/javascript'});
   return new Worker(URL.createObjectURL(blob),{type:'module'});
 }
+async function initWebLLMMainThread(){
+  // Fallback: load directly in main thread (no worker) — ensures Pages works even if blob worker blocked by CSP
+  try{
+    if(!navigator.gpu) throw new Error('WebGPU not available — enable chrome://flags/#enable-unsafe-webgpu or use Chrome 113+');
+    const mod = await import("https://esm.sh/@mlc-ai/web-llm@0.2.79?bundle");
+    const CreateMLCEngine = mod.CreateMLCEngine || mod.default?.CreateMLCEngine;
+    if(!CreateMLCEngine) throw new Error('CreateMLCEngine not found in @mlc-ai/web-llm');
+    modelStateEl.textContent='LOADING (main)'; modelDot.className='dot warn';
+    webllmEngine = await CreateMLCEngine(webllmModel, {initProgressCallback:(p)=>{ modelStateEl.textContent=(p.text||'loading').slice(0,40); }});
+    webllmReady=true; webllmLoading=false; webllmWorker=null;
+    modelStateEl.textContent='READY'; modelDot.className='dot ok'; answerStatus.textContent='webllm ready (main)';
+    pushAnswer('agent', `<span style="color:var(--ok)">WebLLM ready (main thread)</span> <span class="mono">${webllmModel}</span> — ABI <code>python/tool/vm/final</code> → JIT Box.`);
+    return true;
+  }catch(err){
+    pushAnswer('agent', `<span style="color:var(--err)">WebLLM main-thread failed:</span> ${String(err.message||err).slice(0,500)} — try Chrome + WebGPU, or use fallback planner.`);
+    modelStateEl.textContent='ERROR'; modelDot.className='dot off';
+    return false;
+  }
+}
 async function initWebLLM(){
   if(webllmLoading||webllmReady) return; webllmLoading=true; modelStateEl.textContent='LOADING'; modelDot.className='dot warn'; modelName.textContent=webllmModel; answerStatus.textContent='loading webllm';
+  // WebGPU pre-check with friendly message
+  if(!navigator.gpu){
+    webllmLoading=false; modelStateEl.textContent='NO WEBGPU'; modelDot.className='dot off';
+    pushAnswer('agent', `<span style="color:var(--warn)">WebGPU not detected.</span> Chrome 113+ with <code>chrome://flags/#enable-unsafe-webgpu</code> enabled required. Fallback planner active — ask still works via WASM Box. <button class="btn" onclick="initWebLLMMainThread()">Try main-thread load</button>`);
+    return;
+  }
   try{
-    if(typeof Worker==='undefined') throw new Error('Worker unsupported');
+    if(typeof Worker==='undefined') throw new Error('Worker unsupported — trying main thread');
     webllmWorker=createWorker();
+    let workerFailed=false;
+    webllmWorker.onerror=(e)=>{
+      workerFailed=true; console.error('WebLLM worker error', e);
+      pushAnswer('agent', `<span style="color:var(--warn)">Worker failed to start (${e.message||'blob import blocked by CSP'}). Trying main-thread fallback…</span>`);
+      // kill worker and fallback
+      try{ webllmWorker.terminate(); }catch{}
+      webllmWorker=null; webllmLoading=false;
+      initWebLLMMainThread();
+    };
     webllmWorker.onmessage=(e)=>{
       const d=e.data;
-      if(d.type==='progress'){ modelStateEl.textContent=d.text.slice(0,40); modelDot.className='dot warn'; }
-      if(d.type==='ready'){ webllmReady=true; webllmLoading=false; modelStateEl.textContent='READY'; modelDot.className='dot ok'; answerStatus.textContent='webllm ready'; pushAnswer('agent', `<span style="color:var(--ok)">WebLLM ready</span> <span class="mono">${d.model}</span> — will emit <code>python/tool/vm/final</code> ABI → JIT Box.`); }
-      if(d.type==='reply'){ const cb=webllmPending.get(d.id); if(cb) cb(d.content); }
-      if(d.type==='error'){ webllmLoading=false; modelStateEl.textContent='ERROR'; modelDot.className='dot off'; pushAnswer('agent', `<span style="color:var(--err)">WebLLM error:</span> ${d.error}`); }
+      if(d.type==='progress'){ modelStateEl.textContent=d.text.slice(0,40); modelDot.className='dot warn'; if(d.progress!=null) modelStateEl.textContent=`${d.text.slice(0,28)} ${(d.progress*100).toFixed(0)}%`; }
+      if(d.type==='ready'){ webllmReady=true; webllmLoading=false; modelStateEl.textContent='READY'; modelDot.className='dot ok'; answerStatus.textContent='webllm ready'; pushAnswer('agent', `<span style="color:var(--ok)">WebLLM ready (worker)</span> <span class="mono">${d.model}</span> — will emit <code>python/tool/vm/final</code> ABI → JIT Box.`); }
+      if(d.type==='reply'){ const cb=webllmPending.get(d.id); if(cb){ webllmPending.delete(d.id); cb(d.content);} }
+      if(d.type==='error'){
+        if(d.id!=null){ const cb=webllmPending.get(d.id); if(cb){ webllmPending.delete(d.id); cb('__ERROR__:'+d.error); return; } }
+        // load error → fallback
+        webllmLoading=false; modelStateEl.textContent='ERROR'; modelDot.className='dot off';
+        pushAnswer('agent', `<span style="color:var(--err)">WebLLM worker error:</span> ${String(d.error).slice(0,800)}<br><button class="btn" onclick="initWebLLMMainThread()" style="margin-top:6px">Retry main-thread</button> <button class="btn ghost" onclick="webllmModel='SmolLM2-360M-Instruct-q4f16_1-MLC'; modelName.textContent=webllmModel; initWebLLM()">Try 360M</button>`);
+        // auto-fallback for load errors
+        if(!webllmReady) setTimeout(()=>initWebLLMMainThread(), 300);
+      }
     };
     webllmWorker.postMessage({type:'load', model:webllmModel});
+    // watchdog: if no progress in 8s, show hint
+    setTimeout(()=>{ if(webllmLoading && !webllmReady) pushAnswer('agent', `<span class="mono" style="font-size:9px;color:var(--dim)">WebLLM downloading ${webllmModel} (~1GB) — first load caches in IndexedDB. Check DevTools → Application → Cache. If stuck, try 360M model.</span>`); }, 8000);
   }catch(e){
     webllmLoading=false; modelStateEl.textContent='OFFLINE'; modelDot.className='dot off';
-    pushAnswer('agent', `WebLLM unavailable (${e.message}) — fallback planner active.`);
+    pushAnswer('agent', `WebLLM unavailable (${e.message}) — fallback planner active. <button class="btn" onclick="initWebLLMMainThread()">Try main-thread</button>`);
   }
 }
 let webllmPending=new Map(), webllmId=0;
-function webllmGenerate(messages){
+async function webllmGenerate(messages){
+  // main-thread path
+  if(webllmEngine){
+    const r = await webllmEngine.chat.completions.create({messages, temperature:0.2, max_tokens:512});
+    return r.choices[0].message.content;
+  }
+  if(!webllmWorker) throw new Error('WebLLM not loaded — click Load WebLLM');
   return new Promise((resolve,reject)=>{
-    const id=++webllmId; webllmPending.set(id, resolve);
+    const id=++webllmId; webllmPending.set(id, (content)=>{
+      if(String(content).startsWith('__ERROR__:')) reject(new Error(String(content).slice(10)));
+      else resolve(content);
+    });
     webllmWorker.postMessage({type:'generate', id, messages, temperature:0.2});
-    setTimeout(()=>{ if(webllmPending.has(id)){ webllmPending.delete(id); reject(new Error('webllm timeout')) }}, 30000);
+    setTimeout(()=>{ if(webllmPending.has(id)){ webllmPending.delete(id); reject(new Error('webllm timeout — model still loading?')) }}, 40000);
   });
 }
 function parseABI(text){
