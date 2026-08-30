@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Perplexity Macro VM — Agent Console</title>
+<meta name="description" content="Deterministic 16-bit research VM. Phoenix LiveView control surface. WASM + IPython sandbox. Capability-mediated tools.">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=SF+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script>
+<style>
+:root{
+  --bg:#080a0e; --panel:#0f141c; --panel2:#111827; --line:rgba(255,255,255,.08); --line2:rgba(255,255,255,.06);
+  --text:#e6eaf0; --muted:#8b96a8; --dim:#5a6577; --accent:#7c8cff; --accent2:#22d3ee; --ok:#10b981; --warn:#f59e0b; --err:#ef4444;
+  --radius:16px; --radius2:12px; --shadow:0 10px 40px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.06);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Inter',system-ui,-apple-system,sans-serif;overflow:hidden}
+a{color:inherit}
+button{font:inherit}
+.mono{font-family:'JetBrains Mono',ui-monospace,monospace}
+/* APP */
+.app{display:flex;flex-direction:column;height:100vh}
+/* TOP BAR */
+.topbar{
+  height:56px; display:flex; align-items:center; justify-content:space-between; gap:16px;
+  padding:0 16px; border-bottom:1px solid var(--line); background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+  backdrop-filter: blur(16px); position:sticky; top:0; z-index:10;
+}
+.brand{display:flex; align-items:center; gap:12px; min-width:0}
+.badge{width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#7c8cff,#22d3ee);display:grid;place-items:center;font-weight:700;font-size:12px;letter-spacing:.06em}
+.brand h1{font-size:13px; font-weight:700; letter-spacing:.14em; text-transform:uppercase; white-space:nowrap}
+.brand p{font-size:11px; color:var(--muted); letter-spacing:.04em; white-space:nowrap}
+.status{display:flex; align-items:center; gap:10px; flex-wrap:wrap}
+.pill{display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border-radius:999px; background:rgba(255,255,255,.06); border:1px solid var(--line); font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase}
+.dot{width:7px;height:7px;border-radius:50%; box-shadow:0 0 10px currentColor}
+.dot.ok{background:var(--ok); color:var(--ok)} .dot.warn{background:var(--warn); color:var(--warn)} .dot.off{background:var(--dim)}
+.controls{display:flex; gap:8px; align-items:center}
+.btn{
+  padding:8px 12px; border-radius:10px; border:1px solid var(--line); background:rgba(255,255,255,.06); color:var(--text);
+  font-size:12px; font-weight:600; letter-spacing:.04em; cursor:pointer; transition:.15s; white-space:nowrap;
+}
+.btn:hover{background:rgba(255,255,255,.10); transform:translateY(-1px)}
+.btn.primary{background:linear-gradient(135deg,#7c8cff,#5b6cff); border-color:rgba(124,140,255,.5); box-shadow:0 6px 20px rgba(124,140,255,.35)}
+.btn.ghost{background:transparent}
+.btn:disabled{opacity:.5; cursor:not-allowed; transform:none}
+/* LAYOUT */
+.grid{
+  flex:1; display:grid; min-height:0;
+  grid-template-columns: 380px 1fr 320px;
+  grid-template-rows: minmax(0, 1fr) 220px 180px;
+  gap:10px; padding:10px; background:radial-gradient(1000px 600px at 20% 0%, rgba(124,140,255,.08), transparent 60%), radial-gradient(900px 500px at 90% 20%, rgba(34,211,238,.06), transparent 60%), var(--bg);
+}
+@media (max-width:1200px){
+  .grid{grid-template-columns: 340px 1fr; grid-template-rows: 1fr 220px 180px 260px}
+  .tools{grid-column:1 / -1}
+}
+@media (max-width:860px){
+  .grid{grid-template-columns: 1fr; grid-template-rows: auto; overflow:auto; height:auto}
+  .app{height:auto; min-height:100vh}
+  html,body{overflow:auto}
+}
+.card{
+  background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+  border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); overflow:hidden; min-height:0; display:flex; flex-direction:column;
+}
+.card-h{
+  padding:10px 12px; display:flex; align-items:center; justify-content:space-between; gap:10px;
+  border-bottom:1px solid var(--line2); background:rgba(255,255,255,.02); font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--muted);
+}
+.card-h .actions{display:flex; gap:6px}
+.iconbtn{width:28px;height:28px;border-radius:8px;border:1px solid var(--line);background:rgba(255,255,255,.04);display:grid;place-items:center;cursor:pointer}
+.iconbtn:hover{background:rgba(255,255,255,.08)}
+/* CHAT */
+.chat{grid-row:1 / 3}
+.chat-log{flex:1; overflow:auto; padding:14px; display:flex; flex-direction:column; gap:12px; scrollbar-width:thin}
+.msg{padding:10px 12px; border-radius:14px; max-width:92%; border:1px solid var(--line2); background:rgba(255,255,255,.03); line-height:1.5; font-size:13px}
+.msg.user{align-self:flex-end; background:linear-gradient(135deg, rgba(124,140,255,.22), rgba(34,211,238,.14)); border-color:rgba(124,140,255,.25)}
+.msg.agent{align-self:flex-start}
+.msg .meta{font-size:10px; letter-spacing:.06em; text-transform:uppercase; color:var(--dim); margin-bottom:6px; font-family:'JetBrains Mono',monospace}
+.msg pre{margin-top:8px; padding:10px; border-radius:10px; background:#0b0f16; border:1px solid var(--line2); overflow:auto; font-size:12px}
+.instr{margin-top:8px; padding:10px; border-radius:10px; background:rgba(124,140,255,.08); border:1px solid rgba(124,140,255,.18); font-family:'JetBrains Mono',monospace; font-size:11px}
+.instr .k{color:var(--muted)} .instr .v{color:#cbd5e1}
+.tool-call{margin-top:8px; display:flex; gap:8px; align-items:center; font-size:11px; color:var(--muted)}
+.tool-call .chip{padding:4px 8px; border-radius:999px; background:rgba(16,185,129,.12); border:1px solid rgba(16,185,129,.25); color:#6ee7b7; font-weight:700; letter-spacing:.06em; text-transform:uppercase}
+.chat-input{display:flex; gap:8px; padding:10px; border-top:1px solid var(--line2); background:rgba(0,0,0,.2)}
+.chat-input textarea{
+  flex:1; min-height:44px; max-height:120px; resize:vertical; padding:10px 12px; border-radius:12px;
+  border:1px solid var(--line); background:rgba(255,255,255,.04); color:var(--text); outline:none; font-size:13px;
+}
+.chat-input textarea:focus{border-color:rgba(124,140,255,.5); box-shadow:0 0 0 3px rgba(124,140,255,.15)}
+/* EXECUTION */
+.exec{display:flex; flex-direction:column; min-height:0}
+.pipeline{
+  display:grid; grid-template-columns:repeat(5,1fr); gap:8px; padding:12px;
+}
+.step{
+  padding:10px; border-radius:12px; background:rgba(255,255,255,.03); border:1px solid var(--line2); text-align:center;
+  transition:.2s;
+}
+.step.active{background:linear-gradient(135deg, rgba(124,140,255,.18), rgba(34,211,238,.10)); border-color:rgba(124,140,255,.35); box-shadow:0 0 20px rgba(124,140,255,.2)}
+.step.done{border-color:rgba(16,185,129,.35); background:rgba(16,185,129,.08)}
+.step .n{font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--dim); font-family:'JetBrains Mono',monospace}
+.step .t{font-size:12px; font-weight:700; margin-top:4px}
+.step .d{font-size:11px; color:var(--muted); margin-top:2px}
+.arrow{place-self:center; color:var(--dim)}
+.exec-stats{display:flex; gap:8px; padding:0 12px 10px; flex-wrap:wrap}
+.stat{flex:1; min-width:110px; padding:10px; border-radius:12px; background:rgba(255,255,255,.03); border:1px solid var(--line2)}
+.stat .k{font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--dim); font-family:'JetBrains Mono',monospace}
+.stat .v{font-size:14px; font-weight:700; margin-top:2px; font-family:'JetBrains Mono',monospace}
+.memory{
+  display:grid; grid-template-columns:repeat(8,1fr); gap:6px; padding:10px 12px; border-top:1px solid var(--line2); background:rgba(0,0,0,.15)
+}
+.mcell{padding:6px; border-radius:8px; background:#0b0f16; border:1px solid var(--line2); text-align:center}
+.mcell .a{font-size:9px; color:var(--dim); font-family:'JetBrains Mono',monospace}
+.mcell .v{font-size:11px; font-weight:600; font-family:'JetBrains Mono',monospace}
+/* TOOLS */
+.tools-list{flex:1; overflow:auto; padding:8px; display:flex; flex-direction:column; gap:8px; scrollbar-width:thin}
+.tool{
+  display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px; border-radius:12px;
+  background:rgba(255,255,255,.03); border:1px solid var(--line2);
+}
+.tool-left{display:flex; align-items:center; gap:10px; min-width:0}
+.tool-icon{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;background:rgba(124,140,255,.12); border:1px solid rgba(124,140,255,.2); font-size:13px}
+.tool-name{font-size:12px; font-weight:700; letter-spacing:.02em}
+.tool-desc{font-size:11px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:170px}
+.tool-right{display:flex; align-items:center; gap:8px}
+.cap{font-size:10px; font-family:'JetBrains Mono',monospace; padding:3px 6px; border-radius:6px; background:#0b0f16; border:1px solid var(--line2); color:var(--muted)}
+.toggle{width:36px;height:22px;border-radius:999px;background:rgba(255,255,255,.08); border:1px solid var(--line); position:relative; cursor:pointer}
+.toggle.on{background:rgba(16,185,129,.25); border-color:rgba(16,185,129,.4)}
+.toggle i{position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:50%; background:#fff; transition:.2s; box-shadow:0 2px 8px rgba(0,0,0,.3)}
+.toggle.on i{left:16px}
+/* IPYTHON */
+.ipython{grid-column:1 / 3}
+.terminal{flex:1; min-height:0; display:flex; flex-direction:column; background:#0a0f16; border-top:1px solid var(--line2)}
+.term-out{flex:1; overflow:auto; padding:10px 12px; font-family:'JetBrains Mono',monospace; font-size:12px; line-height:1.6; white-space:pre-wrap; scrollbar-width:thin}
+.term-line{display:flex; gap:8px}
+.prompt{color:var(--accent2); font-weight:700}
+.term-in{display:flex; gap:8px; padding:10px 12px; border-top:1px solid var(--line2); background:rgba(255,255,255,.02)}
+.term-in input{flex:1; background:transparent; border:none; outline:none; color:var(--text); font-family:'JetBrains Mono',monospace; font-size:12px}
+.hint{font-size:11px; color:var(--dim); padding:6px 12px; border-top:1px solid var(--line2)}
+.hint code{padding:2px 6px; border-radius:6px; background:rgba(255,255,255,.06); border:1px solid var(--line2); font-family:'JetBrains Mono',monospace}
+/* TRACE */
+.trace{grid-column:1 / -1}
+.trace-table{flex:1; overflow:auto; border-top:1px solid var(--line2)}
+table{width:100%; border-collapse:collapse; font-family:'JetBrains Mono',monospace; font-size:11px}
+th{position:sticky; top:0; background:#0f141c; z-index:1; text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); color:var(--muted); font-weight:700; letter-spacing:.06em; text-transform:uppercase; font-size:10px}
+td{padding:7px 10px; border-bottom:1px solid var(--line2); color:#cbd5e1; white-space:nowrap}
+tr:hover td{background:rgba(124,140,255,.06)}
+.badge2{padding:2px 6px; border-radius:6px; font-size:10px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; border:1px solid}
+.b-ok{background:rgba(16,185,129,.12); border-color:rgba(16,185,129,.25); color:#6ee7b7}
+.b-warn{background:rgba(245,158,11,.12); border-color:rgba(245,158,11,.25); color:#fcd34d}
+.b-err{background:rgba(239,68,68,.12); border-color:rgba(239,68,68,.25); color:#fca5a5}
+/* FOOTER */
+.foot{padding:8px 12px; display:flex; justify-content:space-between; gap:12px; font-size:11px; color:var(--dim); border-top:1px solid var(--line2); background:rgba(0,0,0,.2)}
+.foot a{color:var(--muted); text-decoration:none; border-bottom:1px dotted rgba(255,255,255,.2)}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <div class="badge">◇</div>
+      <div>
+        <h1>Perplexity Macro VM <span style="color:var(--accent)">·</span> Agent Console</h1>
+        <p>Macro VM owns control · Host owns evidence · WASM owns execution</p>
+      </div>
+    </div>
+    <div class="status">
+      <span class="pill"><i class="dot ok"></i> VM <span class="mono" id="vmState">IDLE</span></span>
+      <span class="pill"><i class="dot ok" id="wasmDot"></i> WASM <span id="wasmState">READY</span></span>
+      <span class="pill"><i class="dot warn" id="pyDot"></i> IPYTHON <span id="pyState">LOADING</span></span>
+      <span class="pill mono" id="fuelPill">FUEL 128</span>
+      <span class="pill mono" id="hashPill">HASH 0000</span>
+    </div>
+    <div class="controls">
+      <button class="btn primary" id="btnRun">▶ Run</button>
+      <button class="btn" id="btnStep">Step</button>
+      <button class="btn" id="btnPause">⏸ Pause</button>
+      <button class="btn ghost" id="btnReset">Reset</button>
+      <a class="btn ghost" href="https://github.com/SNAPKITTYWEST/perplexity-macro-vm" target="_blank">GitHub</a>
+    </div>
+  </header>
+
+  <main class="grid">
+    <!-- CHAT -->
+    <section class="card chat">
+      <div class="card-h">
+        Agent · Instruction Model
+        <div class="actions">
+          <select id="agentSel" class="btn" style="padding:6px 8px; height:28px">
+            <option value="research">research</option>
+            <option value="macrogrok">macrogrok</option>
+            <option value="sovereign">sovereign</option>
+          </select>
+        </div>
+      </div>
+      <div id="chatLog" class="chat-log">
+        <div class="msg agent">
+          <div class="meta">SYSTEM · BOOT</div>
+          Phoenix LiveView control surface online. VM owns control flow, RQ requests capabilities, broker returns typed evidence. Type an instruction to dispatch through the Macro VM.
+          <div class="instr">
+            <div><span class="k">model</span> <span class="v">= instruction generator</span></div>
+            <div><span class="k">macro vm</span> <span class="v">= deterministic execution authority</span></div>
+            <div><span class="k">wasm/ipython</span> <span class="v">= isolated computation</span></div>
+            <div><span class="k">broker</span> <span class="v">= controlled world interface</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="chat-input">
+        <textarea id="chatInput" placeholder="Instruction: e.g. 'plan a search for Q1.14 saturation behavior, then verify via Python' — Shift+Enter to send"></textarea>
+        <button class="btn primary" id="btnSend">Send</button>
+      </div>
+      <div class="hint">
+        Try: <code>tools.search("attention WMMA")</code> · <code>python.execute("import numpy as np; np.mean([1,2,3])")</code> · <code>macrogrok.infer4([0.2, -0.1, 0.5, 0.0])</code>
+      </div>
+    </section>
+
+    <!-- EXECUTION -->
+    <section class="card exec">
+      <div class="card-h">Execution · <span class="mono" id="planLabel">idle</span>
+        <span style="font-weight:500; text-transform:none; letter-spacing:0; color:var(--muted)" id="pcLabel">PC $0000 → fuel 128</span>
+      </div>
+      <div class="pipeline" id="pipeline">
+        <div class="step active" data-s="plan"><div class="n">01</div><div class="t">PLAN</div><div class="d">decompose</div></div>
+        <div class="step" data-s="tool"><div class="n">02</div><div class="t">TOOL CALL</div><div class="d">capability RQ</div></div>
+        <div class="step" data-s="wasm"><div class="n">03</div><div class="t">WASM / PYTHON</div><div class="d">isolated exec</div></div>
+        <div class="step" data-s="verify"><div class="n">04</div><div class="t">VERIFY</div><div class="d">schema + CRC</div></div>
+        <div class="step" data-s="evidence"><div class="n">05</div><div class="t">EVIDENCE</div><div class="d">TRACE + HASH</div></div>
+      </div>
+      <div class="exec-stats">
+        <div class="stat"><div class="k">Retired</div><div class="v" id="statRetired">0</div></div>
+        <div class="stat"><div class="k">Cycles</div><div class="v" id="statCycles">0</div></div>
+        <div class="stat"><div class="k">Transcript</div><div class="v mono" id="statTranscript">0x0000</div></div>
+        <div class="stat"><div class="k">Coverage</div><div class="v" id="statCoverage">0%</div></div>
+      </div>
+      <div class="memory mono" id="memory"></div>
+      <div class="card-h" style="border-top:1px solid var(--line2)">Registers · <span id="regsLabel" class="mono" style="text-transform:none; letter-spacing:0; font-weight:600; color:#cbd5e1">A 0 B 0 C 0 D 0 PC $0000 SP $DFFF FLAGS 0</span></div>
+      <div style="padding:10px 12px; display:flex; gap:8px; flex-wrap:wrap">
+        <button class="btn" onclick="demoMacrogrok()">MACROGROK infer4</button>
+        <button class="btn" onclick="demoSearch()">Tavily search</button>
+        <button class="btn" onclick="demoPython()">Python sandbox</button>
+        <button class="btn" onclick="demoConfirm()">CONFIRM sensitive</button>
+      </div>
+    </section>
+
+    <!-- TOOLS -->
+    <section class="card tools">
+      <div class="card-h">Tool Broker · Capability Router</div>
+      <div class="tools-list" id="toolsList"></div>
+      <div class="foot"><span id="toolStatus">8 capabilities · sensitive require CONFIRM</span><a href="#" onclick="exportTrace();return false">Export trace</a></div>
+    </section>
+
+    <!-- IPYTHON / WASM -->
+    <section class="card ipython">
+      <div class="card-h">
+        WASM Box · IPython / Python Kernel (Pyodide)
+        <div class="actions">
+          <button class="iconbtn" title="Reset kernel" onclick="resetPy()">↺</button>
+          <button class="iconbtn" title="Install package" onclick="installPkg()">＋</button>
+          <button class="iconbtn" title="Export" onclick="exportPy()">⤓</button>
+        </div>
+      </div>
+      <div class="terminal">
+        <div id="termOut" class="term-out"></div>
+        <div class="term-in">
+          <span class="prompt">>>></span>
+          <input id="termIn" placeholder="python.execute — try: import numpy as np; np.ones(3)  or  tools.search('...')" autocomplete="off" spellcheck="false">
+          <button class="btn" onclick="runTerm()">Run</button>
+        </div>
+      </div>
+      <div class="hint">
+        Sandbox: <code>python.execute</code> · <code>python.inspect</code> · <code>python.reset</code> · <code>python.install("numpy")</code> · <code>tools.*</code> mediated via Capability Router → ResearchBroker (no direct net/fs)
+      </div>
+    </section>
+
+    <!-- TRACE -->
+    <section class="card trace">
+      <div class="card-h">VM Trace · 50k ring buffer · PubSub LiveView
+        <div class="actions">
+          <button class="btn" style="padding:6px 8px; height:28px" onclick="clearTrace()">Clear</button>
+          <label class="pill" style="gap:6px; cursor:pointer"><input type="checkbox" id="autoStep" checked> auto-step</label>
+        </div>
+      </div>
+      <div class="trace-table">
+        <table>
+          <thead><tr><th>#</th><th>PC</th><th>OP</th><th>CAP</th><th>RESULT</th><th>FUEL</th><th>HASH</th><th>STATUS</th></tr></thead>
+          <tbody id="traceBody"></tbody>
+        </table>
+      </div>
+      <div class="foot">
+        <span>VM Contract: Word 16-bit · ROM $0000-$1FFF · RAM $2000-$DFFF · MMIO $E000 · RQ/POLL/READ/VERIFY/EVIDENCE/COVERAGE/DISAGREE/HASH/EMIT/CONFIRM · Phase $00 fuel $01 cap $02 status $03 · TLV @$46 CRC16 @$C6</span>
+        <span class="mono" id="footHash">transcript 0x0000</span>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script type="module" src="./app.js"></script>
+</body>
+</html>

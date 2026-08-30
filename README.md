@@ -4,6 +4,8 @@
 
 Deterministic 16-bit research VM that runs Perplexity-style planning → search → evidence → critique → synthesis compiled to ROM. Elixir GenServer OTP + Phoenix LiveView streams every retired instruction. Host does web/model/code work behind typed capability boundaries; VM owns control flow.
 
+> **Live Agent Console → https://snapkittywest.github.io/perplexity-macro-vm/agent-console/** — Phoenix LiveView control surface · WASM Box + Pyodide IPython · VM owns control, broker owns evidence · 22 tools mediated · static fallback when LiveView offline. Local: `docs/agent-console/`
+
 ## Architecture
 
 ```
@@ -111,6 +113,27 @@ priv/rom/research_loop.pqr
 test/
 ```
 
+## Agent Console (GitHub Pages + Swift + Sandbox)
+
+**Live:** https://snapkittywest.github.io/perplexity-macro-vm/agent-console/ — super-clean Swift-fronted chat (Tokamak/SwiftWasm in `apps/AgentConsole/`, static at `docs/agent-console/`).
+
+```
+Phoenix LiveView (Agent Console)
+  instruction → PLAN → EXECUTE → OBSERVE   VM Trace | Memory | Tools | Python
+                         │ WebSocket / PubSub (TraceHub 50k ring)
+                  AGENT RUNTIME (planner · dispatcher · transcript)
+                        │
+          ┌─────────────┼──────────────┐
+       Macro VM      WASM Box       Tool Broker
+       16-bit        Python         search/fetch/browser/code/local_model/wikipedia/mathematica/dictionary
+       ROM/RAM       IPython        + Sovereign Tool API (14 tools) + macrogrok
+                     Pyodide        (sovereign-tool-api.mjs — 22 total)
+```
+
+WASM Box is isolated — `python.execute/inspect/reset/install` has no direct net/fs; `tools.search()` inside Python is mediated → Capability Router → `CONFIRM 0x2A` for sensitive caps → ResearchBroker → TLV@$46 CRC16@$C6 → VM. See `docs/agent-console/README.md` and `apps/AgentConsole/README.md`.
+
+**Swift:** `swift run AgentConsoleApp` (also `carton build` for browser WASM). Phoenix integration: `lib/perplexity_macro/tool_router.ex` + `wasm_box.ex` + `lib/perplexity_macro_web/live/agent_console_live.ex`.
+
 ## Run
 
 ```bash
@@ -118,6 +141,7 @@ mix deps.get
 mix test
 iex -S mix  # PerplexityMacro.Application starts ROM + VM + TraceHub + Endpoint
 # Phoenix LiveView at http://localhost:4000 — Run/Step/Pause, trace table, memory hex
+# Agent Console at http://localhost:4000/agent_console (LiveView) or docs/agent-console/ (static)
 mix compile.pqm programs/research_loop.pqm --out priv/rom/
 ```
 
