@@ -1,0 +1,8 @@
+program research_loop
+const fuel_budget=12
+const min_sources=3
+entry: fuel fuel_budget
+plan: request search, query("topic decomposition") -> await_result -> verify -> branch_invalid retry_plan
+search: request search, subquestion batch -> await_result -> verify -> evidence -> coverage -> branch_lt min_sources, search
+read: request fetch, selected -> await_result -> verify -> evidence
+synthesize: request local_model, render_cited_answer -> await_result -> verify -> emit final -> halt
