@@ -98,15 +98,13 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-
 </div>
 
 <div id="f-nvidia" style="display:none">
-<div class="field" style="margin-top:14px"><label>NVIDIA API Key</label><input id="nvidiaKey" type="password" placeholder="nvapi-..."><div class="hint">Get free key at <a href="https://build.nvidia.com" target="_blank">build.nvidia.com</a> — 1000 free credits/day</div></div>
+<div class="field" style="margin-top:14px"><label>NVIDIA API Key</label><input id="nvidiaKey" type="password" placeholder="nvapi-..."><div class="hint">Get free key at <a href="https://build.nvidia.com" target="_blank">build.nvidia.com</a></div></div>
 <div class="field"><label>Model</label><select id="nvidiaModel">
+<option value="nvidia/nemotron-3.5-lightning-30b-a3b">Nemotron 3.5 Lightning 30B (fast)</option>
 <option value="nvidia/llama-3.1-nemotron-70b-instruct">Nemotron 70B Instruct</option>
-<option value="nvidia/llama-3.1-nemotron-70b-reward">Nemotron 70B Reward</option>
 <option value="nvidia/nemotron-mini-4b-instruct">Nemotron Mini 4B</option>
-<option value="nvidia/llama-3.3-70b-instruct">Llama 3.3 70B Instruct</option>
 <option value="meta/llama-3.1-8b-instruct">Llama 3.1 8B</option>
 <option value="meta/llama-3.1-70b-instruct">Llama 3.1 70B</option>
-<option value="meta/llama-3.1-405b-instruct">Llama 3.1 405B</option>
 <option value="qwen/qwen2.5-72b-instruct">Qwen 2.5 72B</option>
 <option value="deepseek/deepseek-r1">DeepSeek R1</option>
 </select></div>
@@ -114,7 +112,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-
 
 <div id="f-openrouter" style="display:none">
 <div class="field" style="margin-top:14px"><label>API Key</label><input id="orKey" type="password" placeholder="sk-or-..."><div class="hint">Get key at <a href="https://openrouter.ai/keys" target="_blank">openrouter.ai/keys</a></div></div>
-<div class="field"><label>Model</label><input id="orModel" value="opencode/mimo-v2.5-free" placeholder="model-name:free"><div class="hint">Default: <code class="mono">opencode/mimo-v2.5-free</code> (best free model). Other free options:<br><code class="mono">meta-llama/llama-3.1-8b-instruct:free</code><br><code class="mono">qwen/qwen-2.5-7b-instruct:free</code><br><code class="mono">mistralai/mistral-7b-instruct:free</code><br><code class="mono">openrouter/auto</code> (auto-picks)</div></div>
+<div class="field"><label>Model</label><input id="orModel" value="meta-llama/llama-3.1-8b-instruct:free" placeholder="model-name"><div class="hint">Free models (append <code class="mono">:free</code>):<br><code class="mono">meta-llama/llama-3.1-8b-instruct:free</code><br><code class="mono">qwen/qwen-2.5-7b-instruct:free</code><br><code class="mono">mistralai/mistral-7b-instruct:free</code><br>Or use <code class="mono">openrouter/auto</code></div></div>
 </div>
 
 <div id="f-openai" style="display:none">
@@ -245,13 +243,17 @@ async function callModel(){
   const msgs=[{role:'system',content:SP},...chatHistory];
   if(provider==='ollama'){
     const r=await fetch(apiUrl+'/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model,messages:msgs,stream:false})});
-    if(!r.ok)throw new Error('Ollama error '+r.status);const d=await r.json();return d.message?.content||'';
+    if(!r.ok){const e=await r.text();throw new Error('Ollama: '+e.slice(0,200))}const d=await r.json();return d.message?.content||'';
   }
+  // NVIDIA uses OpenAI-compatible API with streaming
   const H={'Content-Type':'application/json'};
-  if(provider==='openrouter'){H['Authorization']='Bearer '+apiKey;H['HTTP-Referer']=location.origin;H['X-Title']='Macro VM'}
+  if(provider==='nvidia'){H['Authorization']='Bearer '+apiKey}
+  else if(provider==='openrouter'){H['Authorization']='Bearer '+apiKey;H['HTTP-Referer']=location.origin;H['X-Title']='Macro VM'}
   else if(apiKey){H['Authorization']='Bearer '+apiKey}
-  const r=await fetch(apiUrl+'/chat/completions',{method:'POST',headers:H,body:JSON.stringify({model,messages:msgs,max_tokens:4096})});
-  if(!r.ok){const e=await r.text();throw new Error('API '+r.status+': '+e.slice(0,300))}
+
+  // Try non-streaming first (simpler)
+  const r=await fetch(apiUrl+'/chat/completions',{method:'POST',headers:H,body:JSON.stringify({model,messages:msgs,max_tokens:4096,temperature:0.7})});
+  if(!r.ok){const e=await r.text();let msg='API '+r.status;try{const j=JSON.parse(e);msg+': '+(j.error?.message||e.slice(0,200))}catch{msg+': '+e.slice(0,200)}throw new Error(msg)}
   const d=await r.json();return d.choices?.[0]?.message?.content||'';
 }
 
