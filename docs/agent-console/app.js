@@ -168,10 +168,11 @@ window.runTerm=async()=>{ const c=termIn.value.trim(); if(!c) return; termIn.val
 window.runSandbox=()=>{ const c=codeArea.value; dispatchABI({op:'python',code:c})};
 window.resetSandbox=async()=>{ if(pyodide) await pyodide.runPythonAsync(`import sys; sys.modules.clear()`); artifacts=[]; renderArtifacts(); appendTerm('kernel reset','ok')};
 window.switchTab=(t)=>{ document.querySelectorAll('.tab').forEach(el=>el.classList.toggle('active', el.dataset.tab===t));
-  const map={python:['pane-python','pane-terminal'], files:['pane-files'], vm:['pane-vm'], tools:['pane-tools'], terminal:['pane-terminal']};
   ['pane-python','pane-terminal','pane-files','pane-vm','pane-tools'].forEach(id=>{const el=document.getElementById(id); if(el) el.style.display='none'});
+  const div=document.querySelector('.sandbox-body .div');
   let show = t==='python'?['pane-python','pane-terminal']: t==='terminal'?['pane-terminal'] : [ 'pane-'+t];
-  show.forEach(id=>{const el=document.getElementById(id); if(el) el.style.display='' occasion:el.style.display='flex'});
+  show.forEach(id=>{const el=document.getElementById(id); if(el) el.style.display='flex'});
+  if(div) div.style.display = t==='python'?'':'none';
   if(t==='python'){ document.getElementById('pane-python').style.display='flex'; document.getElementById('pane-terminal').style.display='flex' }
 }
 
