@@ -147,8 +147,8 @@ async function connect(){
     apiKey=document.getElementById('apiKey').value.trim();
     model=document.getElementById('modelPick').value;
     if(!apiKey){throw new Error('Enter your API key')}
-    const r=await fetch('https://ollama.com/api/tags',{headers:{'Authorization':'Bearer '+apiKey}});
-    if(!r.ok){const e=await r.text();throw new Error('Bad API key ('+r.status+')')}
+    const r=await fetch('https://ollama.com/api/chat',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+apiKey},body:JSON.stringify({model,messages:[{role:'user',content:'hi'}],stream:false,max_tokens:1})});
+    if(!r.ok){const e=await r.text();throw new Error('Bad key ('+r.status+'): '+e.slice(0,150))}
     document.getElementById('onboard').classList.add('hidden');
     document.getElementById('mainApp').style.display='';
     document.getElementById('modelLabel').textContent=model;
