@@ -31,14 +31,14 @@ let trace = []; let enabled = new Set(TOOLS.filter(t=>!t.sensitive).map(t=>t.id)
 let pyodide=null, pyReady=false; let liveWS=null; let artifacts=[];
 const $=s=>document.querySelector(s);
 
-// DOM — new Perplexity desktop
-const answerCanvas=$('#answerCanvas'), askInput=$('#askInput'), threadList=$('#threadList'), threadCount=$('#threadCount'), currentTaskEl=$('#currentTask'), vmBrief=$('#vmBrief');
+// DOM
+const answerCanvas=$('#answerCanvas'), askInput=$('#askInput'), threadList=$('#threadList');
 const sourcesList=$('#sourcesList'), sourceCount=$('#sourceCount'), sourcesInline=$('#sourcesInline'), answerStatus=$('#answerStatus');
-const codeArea=$('#codeArea'), gutter=$('#gutter'), termOut=$('#termOut'), termIn=$('#termIn'), artifactsEl=$('#artifacts'), filesList=$('#filesList');
-const toolsListEl=$('#toolsList'), memoryEl=$('#memory'), regsLabel=$('#regsLabel'), pcLabel=$('#pcLabel'), fuelPill=$('#fuelPill'), hashPill=$('#hashPill'), vmStateEl=$('#vmState');
+const codeArea=$('#codeArea'), gutter=$('#gutter'), termOut=$('#termOut'), termIn=$('#termIn'), filesList=$('#filesList');
+const toolsListEl=$('#toolsList'), memoryEl=$('#memory'), regsLabel=$('#regsLabel'), pcLabel=$('#pcLabel'), fuelPill=$('#fuelPill');
 const fuelMini=$('#fuelMini'), hashMini=$('#hashMini'), cyclesMini=$('#cyclesMini'), traceBody=$('#traceBody'), statRetired=$('#statRetired'), statCoverage=$('#statCoverage');
 const pyState=$('#pyState'), pyDot=$('#pyDot'), sandboxLabel=$('#sandboxLabel'), sandboxDot=$('#sandboxDot'), termStatus=$('#termStatus');
-const modelDot=$('#modelDot'), modelStateEl=$('#modelState'), modelName=$('#modelName');
+const modelDot=$('#modelDot'), modelStateEl=$('#modelState');
 const agentSel=$('#agentSel');
 
 // WebLLM — Worker (one model, kept in worker)
@@ -52,10 +52,10 @@ function renderTools(){
   if(!toolsListEl) return; toolsListEl.innerHTML='';
   TOOLS.forEach(t=>{
     const on=enabled.has(t.id);
-    const row=document.createElement('div'); row.style.cssText='display:flex;justify-content:space-between;align-items:center;padding:7px;border-radius:8px;background:rgba(255,255,255,.02);border:1px solid var(--line2)';
-    row.innerHTML=`<div style="display:flex;gap:8px;align-items:center"><div style="width:20px;height:20px;border-radius:6px;display:grid;place-items:center;background:rgba(124,140,255,.08);border:1px solid rgba(124,140,255,.14);font-size:10px">${t.icon}</div><div><div style="font-size:10.5px;font-weight:500">${t.label}</div><div style="font-size:9px;color:var(--muted)">${t.desc} · ${t.tier}${t.sensitive?' · CONFIRM':''}</div></div></div><div style="display:flex;gap:6px;align-items:center"><span class="mono" style="font-size:8.5px;padding:2px 5px;border-radius:5px;background:rgba(0,0,0,.25);border:1px solid var(--line2)">${t.cap!==null?'0x'+t.cap.toString(16).padStart(2,'0'):'—'}</span><div class="toggle ${on?'on':''}" data-id="${t.id}" style="width:30px;height:18px;border-radius:999px;background:rgba(255,255,255,.06);border:1px solid var(--line);position:relative;cursor:pointer"><i style="position:absolute;top:2px;left:${on?'14px':'2px'};width:12px;height:12px;border-radius:50%;background:#fff;transition:.2s"></i></div></div>`;
-    row.querySelector('.toggle').onclick=()=>{ if(on) enabled.delete(t.id); else enabled.add(t.id); renderTools(); };
-    row.onclick=(e)=>{ if(e.target.closest('.toggle')) return; dispatchTool(t.id,{query:'demo '+t.label}); };
+    const row=document.createElement('div'); row.style.cssText='display:flex;justify-content:space-between;align-items:center;padding:6px 8px;border-radius:6px;cursor:pointer';
+    row.onmouseenter=()=>row.style.background='var(--surface)'; row.onmouseleave=()=>row.style.background='transparent';
+    row.innerHTML=`<div style="display:flex;gap:8px;align-items:center"><span style="font-size:12px;color:var(--muted)">${t.icon}</span><div><div style="font-size:12px;color:var(--text)">${t.label}</div><div style="font-size:10px;color:var(--dim)">${t.desc}</div></div></div><div style="width:8px;height:8px;border-radius:50%;background:${on?'var(--green)':'var(--dim)'}"></div>`;
+    row.onclick=()=>dispatchTool(t.id,{query:'demo '+t.label});
     toolsListEl.appendChild(row);
   });
 }
@@ -63,8 +63,6 @@ function pushAnswer(role, html){
   const d=document.createElement('div'); d.className=`bubble ${role}`;
   d.innerHTML=html;
   answerCanvas.appendChild(d); answerCanvas.scrollTop=answerCanvas.scrollHeight;
-  // thread count
-  threadCount.textContent = answerCanvas.children.length + ' messages';
 }
 function pushThread(title, desc){
   const el=document.createElement('div'); el.className='thread-item';
@@ -72,22 +70,19 @@ function pushThread(title, desc){
   threadList.prepend(el);
 }
 function addSource(title, meta, ok){ const el=document.createElement('div'); el.className='source';
-  el.innerHTML=`<div class="source-icon">●</div><div><div class="source-title">${title}</div><div class="source-meta">${meta}</div></div><span class="source-status ${ok?'ok':''}">${ok?'ok':'wait'}</span>`;
+  el.innerHTML=`<div class="source-icon">●</div><div><div class="source-title">${title}</div><div class="source-meta">${meta}</div></div><span class="source-status">${ok?'ok':'wait'}</span>`;
   sourcesList.prepend(el); sourceCount.textContent = sourcesList.children.length;
-  const prov=document.createElement('span'); prov.className='prov'; prov.textContent=title; sourcesInline.appendChild(prov);
+  const prov=document.createElement('span'); prov.style.cssText='font-size:10px;color:var(--dim);padding:2px 6px;background:var(--surface);border-radius:4px'; prov.textContent=title; sourcesInline.appendChild(prov);
 }
 function updateVMView(){
-  if(fuelPill) fuelPill.textContent=`FUEL ${vm.fuel}`;
-  if(hashPill) hashPill.textContent=`HASH ${vm.transcript_hash.toString(16).padStart(4,'0').toUpperCase()}`;
-  if(vmStateEl) vmStateEl.textContent=vm.halted?'HALT':vm.waiting?'WAIT':'RUNNING';
-  if(vmBrief) vmBrief.textContent=`PC $${vm.regs.pc.toString(16).padStart(4,'0')} · fuel ${vm.fuel} · retired ${vm.retired}`;
+  if(fuelPill) fuelPill.textContent=`fuel ${vm.fuel}`;
+  if(pcLabel) pcLabel.textContent=`$${vm.regs.pc.toString(16).padStart(4,'0')}`;
+  if(regsLabel) regsLabel.textContent=`A ${vm.regs.a} B ${vm.regs.b} C ${vm.regs.c} D ${vm.regs.d} PC $${vm.regs.pc.toString(16).padStart(4,'0')} SP $${vm.regs.sp.toString(16).padStart(4,'0')}`;
   if(fuelMini) fuelMini.textContent=vm.fuel; if(hashMini) hashMini.textContent='0x'+vm.transcript_hash.toString(16).padStart(4,'0'); if(cyclesMini) cyclesMini.textContent=vm.cycles;
-  if(pcLabel) pcLabel.textContent=`$${vm.regs.pc.toString(16).padStart(4,'0')}`; if(regsLabel) regsLabel.textContent=`A ${vm.regs.a} B ${vm.regs.b} C ${vm.regs.c} D ${vm.regs.d} PC $${vm.regs.pc.toString(16).padStart(4,'0')} SP $${vm.regs.sp.toString(16).padStart(4,'0')}`;
   if(statRetired) statRetired.textContent=vm.retired; if(statCoverage) statCoverage.textContent=Math.min(100, Math.floor((trace.filter(t=>t.evidence).length/Math.max(1,trace.length))*100))+'%';
-  if(memoryEl){ memoryEl.innerHTML=''; [['$00',vm.phase],['$01',vm.fuel],['$02',vm.regs.a>>8&0xff],['$03',vm.waiting?1:0],['$46 TLV',0x46],['$C6 CRC',0xC6]].forEach(([a,v])=>{const c=document.createElement('div');c.style.cssText='padding:4px;border-radius:6px;background:rgba(0,0,0,.25);border:1px solid var(--line2);text-align:center';c.innerHTML=`<div style="font-size:7.5px;color:var(--dim)">${a}</div><div style="font-size:9px" class="mono">0x${Number(v).toString(16).padStart(2,'0')}</div>`;memoryEl.appendChild(c)})}
-  // sandbox dot
+  if(memoryEl){ memoryEl.innerHTML=''; [['$00',vm.phase],['$01',vm.fuel],['$02',vm.regs.a>>8&0xff],['$03',vm.waiting?1:0]].forEach(([a,v])=>{const c=document.createElement('div');c.style.cssText='padding:4px;border-radius:4px;background:var(--surface);text-align:center';c.innerHTML=`<div style="font-size:9px;color:var(--dim)">${a}</div><div class="mono" style="font-size:10px;color:var(--muted)">0x${Number(v).toString(16).padStart(2,'0')}</div>`;memoryEl.appendChild(c)})}
   if(sandboxDot) sandboxDot.className= pyReady?'dot ok':'dot warn';
-  if(sandboxLabel) sandboxLabel.textContent= pyReady?'READY':'LOADING';
+  if(sandboxLabel) sandboxLabel.textContent= pyReady?'ready':'loading';
 }
 function encodeTLV(obj){ const j=JSON.stringify(obj); const b=new TextEncoder().encode(j); return {json:j, len:b.length, source_hash:phash(j), crc16:crc16(b)}}
 function crc16(b){let c=0xFFFF; for(let x of b){c^=x<<8; for(let i=0;i<8;i++)c=(c&0x8000)?(c<<1)^0x1021:c<<1; c&=0xFFFF} return c}
@@ -97,7 +92,7 @@ function addTrace({pc,op,cap,result,fuel,hash,ok}){
   const row={seq:vm.trace_seq, pc, op, cap, result:result?.slice(0,64)??'', fuel:vm.fuel, hash:hash.toString(16).padStart(4,'0'), ok, evidence:op==='EVIDENCE'};
   trace.unshift(row); if(trace.length>200) trace.pop(); renderTrace(); updateVMView(); if(liveWS?.readyState===1) liveWS.send(JSON.stringify({event:'retired',trace:row}));
 }
-function renderTrace(){ if(!traceBody) return; traceBody.innerHTML=''; trace.forEach(r=>{const tr=document.createElement('tr'); tr.innerHTML=`<td class="mono">#${r.seq}</td><td>${r.op}</td><td class="mono">${r.cap||'—'}</td><td class="mono">${r.fuel}</td>`; traceBody.appendChild(tr)}) }
+function renderTrace(){ if(!traceBody) return; traceBody.innerHTML=''; trace.slice(0,20).forEach(r=>{const tr=document.createElement('tr'); tr.innerHTML=`<td class="mono" style="color:var(--dim)">#${r.seq}</td><td>${r.op}</td><td class="mono" style="color:var(--dim)">${r.cap||'—'}</td><td class="mono" style="color:var(--dim)">${r.fuel}</td>`; traceBody.appendChild(tr)}) }
 function makeInstruction({capability,args,fuel=8}){ const id=Math.random().toString(36).slice(2,9).toUpperCase(); return {instruction_id:id, agent:agentSel?.value||'research', op:'tool_call', capability, arguments:args, expected:'evidence', fuel, transcript_hash:vm.transcript_hash}}
 function mockBrokerResult(cap,args){ const q=args.query||args.q||args.word||'sovereign'; if(cap==='search'||cap==='tavily.search') return {results:[{title:`Tavily: ${q}`,url:`https://tavily.com/search?q=${encodeURIComponent(q)}`,content:`POST api.tavily.com/search advanced max_results=5 for ${q}`,score:0.92,source_hash:phash(q)}]}; if(cap==='wikipedia') return {results:[{title:`Wikipedia: ${q}`,url:`https://en.wikipedia.org/wiki/${encodeURIComponent(q)}`,content:`w/api.php extracts ${q}`,score:0.88,source_hash:phash(q)}]}; if(cap==='dictionary') return {results:[{word:q,phonetic:`/${q}/`}]}; if(cap==='mathematica') return {results:[{title:`Wolfram ${q}`,content:`WolframAlpha ${q}`}]};
   if(cap==='fetch') return {results:[{title:`Fetch ${args.url||q}`,url:args.url||'https://example.com',content:`fetched ${args.url||q}`,score:0.9}]}; return {results:[{title:cap,url:`${cap}://`,content:JSON.stringify(args).slice(0,200),score:1.0,source_hash:phash(JSON.stringify(args))}]} }
@@ -145,7 +140,7 @@ async function executeABI(op){
   throw new Error('ABI: unknown op '+op.op);
 }
 function snapshot(){ return {pc:vm.regs.pc, fuel:vm.fuel, hash:vm.transcript_hash, retired:vm.retired, cycles:vm.cycles, regs:{...vm.regs}} }
-function renderArtifacts(){ if(!artifactsEl) return; artifactsEl.innerHTML=''; artifacts.slice(-4).forEach(a=>{const d=document.createElement('div');d.className='artifact';d.innerHTML=`<b>${a.name}</b> ${String(a.content).slice(0,32)}`;artifactsEl.appendChild(d)}); if(filesList) filesList.textContent=artifacts.map(a=>a.name+': '+String(a.content).slice(0,80)).join('\n')||'No artifacts yet.' }
+function renderArtifacts(){ if(filesList) filesList.textContent=artifacts.map(a=>a.name+': '+String(a.content).slice(0,80)).join('\n')||'none yet'; }
 function updateGutter(){ if(!gutter||!codeArea) return; const n=codeArea.value.split('\n').length; gutter.innerHTML=Array.from({length:Math.max(8,n)},(_,i)=>String(i+1).padStart(2,'0')).join('<br>') }
 if(codeArea) codeArea.addEventListener('input', updateGutter);
 
@@ -177,7 +172,7 @@ window.switchTab=(t)=>{ document.querySelectorAll('.tab').forEach(el=>el.classLi
 }
 
 // ABI helpers
-async function dispatchABI(op){ currentTaskEl.textContent= JSON.stringify(op).slice(0,80); answerStatus.textContent=op.op; try{ const res=await executeABI(op); pushAnswer('agent', `<div class="mono" style="font-size:9px;color:var(--dim)">ABI ${op.op}</div><pre style="margin-top:6px;padding:8px;background:rgba(0,0,0,.25);border-radius:8px;overflow:auto;font-size:10px">${JSON.stringify(res,null,2).slice(0,1200)}</pre>`); return res }catch(e){ pushAnswer('agent', `<span style="color:var(--err)">${e.message}</span>`); return {instruction:op, result:null, stdout:'', stderr:String(e), artifacts:[], vm_state:snapshot()} } }
+async function dispatchABI(op){ answerStatus.textContent=op.op; try{ const res=await executeABI(op); pushAnswer('agent', `<div class="label">abi ${op.op}</div><pre>${JSON.stringify(res,null,2).slice(0,800)}</pre>`); return res }catch(e){ pushAnswer('agent', `<span style="color:var(--red)">${e.message}</span>`); return {instruction:op, result:null, stdout:'', stderr:String(e), artifacts:[], vm_state:snapshot()} } }
 async function dispatchTool(cap,args){ return dispatchABI(cap.startsWith('python')?{op:'python',code:args.code||args.query||''}:{op:'tool',name:cap,args}) }
 window.dispatchTool=dispatchTool; window.dispatchABI=dispatchABI; window.macrogrokInfer4=macrogrokInfer4;
 
@@ -221,11 +216,11 @@ async function initWebLLMMainThread(){
     modelStateEl.textContent='LOADING (main)'; modelDot.className='dot warn';
     webllmEngine = await CreateMLCEngine(webllmModel, {initProgressCallback:(p)=>{ modelStateEl.textContent=(p.text||'loading').slice(0,40); }});
     webllmReady=true; webllmLoading=false; webllmWorker=null;
-    modelStateEl.textContent='READY'; modelDot.className='dot ok'; answerStatus.textContent='webllm ready (main)';
-    pushAnswer('agent', `<span style="color:var(--ok)">WebLLM ready (main thread)</span> <span class="mono">${webllmModel}</span> — ABI <code>python/tool/vm/final</code> → JIT Box.`);
+    modelStateEl.textContent='ready'; modelDot.className='dot ok'; answerStatus.textContent='ready';
+    pushAnswer('agent', `<span style="color:var(--green)">WebLLM ready</span> <code>${webllmModel}</code>`);
     return true;
   }catch(err){
-    pushAnswer('agent', `<span style="color:var(--err)">WebLLM main-thread failed:</span> ${String(err.message||err).slice(0,500)} — try Chrome + WebGPU, or use fallback planner.`);
+    pushAnswer('agent', `<span style="color:var(--red)">WebLLM failed:</span> ${String(err.message||err).slice(0,300)}`);
     modelStateEl.textContent='ERROR'; modelDot.className='dot off';
     return false;
   }
@@ -235,7 +230,7 @@ async function initWebLLM(){
   // WebGPU pre-check with friendly message
   if(!navigator.gpu){
     webllmLoading=false; modelStateEl.textContent='NO WEBGPU'; modelDot.className='dot off';
-    pushAnswer('agent', `<span style="color:var(--warn)">WebGPU not detected.</span> Chrome 113+ with <code>chrome://flags/#enable-unsafe-webgpu</code> enabled required. Fallback planner active — ask still works via WASM Box. <button class="btn" onclick="initWebLLMMainThread()">Try main-thread load</button>`);
+    pushAnswer('agent', `<span style="color:var(--yellow)">WebGPU not detected.</span> Chrome 113+ required. Fallback active.`);
     return;
   }
   try{
@@ -253,7 +248,7 @@ async function initWebLLM(){
     webllmWorker.onmessage=(e)=>{
       const d=e.data;
       if(d.type==='progress'){ modelStateEl.textContent=d.text.slice(0,40); modelDot.className='dot warn'; if(d.progress!=null) modelStateEl.textContent=`${d.text.slice(0,28)} ${(d.progress*100).toFixed(0)}%`; }
-      if(d.type==='ready'){ webllmReady=true; webllmLoading=false; modelStateEl.textContent='READY'; modelDot.className='dot ok'; answerStatus.textContent='webllm ready'; pushAnswer('agent', `<span style="color:var(--ok)">WebLLM ready (worker)</span> <span class="mono">${d.model}</span> — will emit <code>python/tool/vm/final</code> ABI → JIT Box.`); }
+      if(d.type==='ready'){ webllmReady=true; webllmLoading=false; modelStateEl.textContent='ready'; modelDot.className='dot ok'; answerStatus.textContent='ready'; pushAnswer('agent', `<span style="color:var(--green)">WebLLM ready</span> <code>${d.model}</code>`); }
       if(d.type==='reply'){ const cb=webllmPending.get(d.id); if(cb){ webllmPending.delete(d.id); cb(d.content);} }
       if(d.type==='error'){
         if(d.id!=null){ const cb=webllmPending.get(d.id); if(cb){ webllmPending.delete(d.id); cb('__ERROR__:'+d.error); return; } }
@@ -300,9 +295,7 @@ function parseABI(text){
 async function runLoop(userPrompt){
   pushAnswer('user', userPrompt.replace(/</g,'&lt;'));
   pushThread(userPrompt.slice(0,40), 'WebLLM → JIT');
-  threadCount.textContent = (threadList.children.length)+' threads';
-  currentTaskEl.textContent = userPrompt.slice(0,100);
-  answerStatus.textContent = webllmReady?'webllm thinking':'planning';
+  answerStatus.textContent = webllmReady?'thinking':'planning';
   if(!webllmReady){
     // fallback: planner is the loop (two steps) — no artificial layer, just deterministic
     const s=await dispatchABI({op:'tool', name:'tavily.search', args:{query:userPrompt.slice(0,60)}});
@@ -343,8 +336,8 @@ window.exportTrace=()=>{ const b=new Blob([JSON.stringify(trace,null,2)],{type:'
 
 // boot
 renderTools(); updateVMView(); updateGutter(); renderArtifacts();
-appendTerm('WASM Box: WebLLM will drive python via ABI {"op":"python","code":"..."} → JIT Box (isolated, tools mediated).','ok');
-appendTerm('Ask anything below — or Load WebLLM first for local instruct model (Phi-3-mini).','ok');
+appendTerm('WASM Box ready — WebLLM drives python via ABI.','ok');
+appendTerm('Ask anything, or Load WebLLM for local model.','ok');
 initPy();
 try{ const proto=location.protocol==='https:'?'wss:':'ws:'; const ws=new WebSocket(proto+location.hostname+':4000/socket/websocket'); ws.onopen=()=>{liveWS=ws; pushAnswer('agent','<span style="color:var(--ok)">LiveView WS connected</span> — TraceHub PubSub');}; ws.onerror=()=>{} }catch{}
 window.vm=vm; window.TOOLS=TOOLS;
