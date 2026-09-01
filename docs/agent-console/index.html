@@ -86,13 +86,26 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-
 <h1>Macro VM</h1>
 <p class="sub">AI agent with Python, search, and terminal tools.</p>
 <div class="rg">
-<div class="ro active" data-p="ollama" onclick="pickP('ollama')"><div class="i">🦙</div><div class="n">Ollama</div><div class="d">Local free</div></div>
-<div class="ro" data-p="nvidia" onclick="pickP('nvidia')"><div class="i">◐</div><div class="n">NVIDIA</div><div class="d">Nemotron free</div></div>
+<div class="ro active" data-p="demo" onclick="pickP('demo')"><div class="i">⚡</div><div class="n">Demo</div><div class="d">No key needed</div></div>
+<div class="ro" data-p="ollama" onclick="pickP('ollama')"><div class="i">🦙</div><div class="n">Ollama</div><div class="d">Local free</div></div>
+<div class="ro" data-p="nvidia" onclick="pickP('nvidia')"><div class="i">◐</div><div class="n">NVIDIA</div><div class="d">Nemotron</div></div>
 <div class="ro" data-p="openrouter" onclick="pickP('openrouter')"><div class="i">☁</div><div class="n">OpenRouter</div><div class="d">Many models</div></div>
 <div class="ro" data-p="openai" onclick="pickP('openai')"><div class="i">◉</div><div class="n">OpenAI</div><div class="d">GPT-4o</div></div>
 </div>
 
-<div id="f-ollama">
+<div id="f-demo">
+<div class="field" style="margin-top:14px"><label>Model</label><select id="demoModel">
+<option value="openchat">OpenChat 7B (fast, good)</option>
+<option value="gemma">Gemma 2 9B (Google)</option>
+<option value="llama">Llama 3.1 8B (Meta)</option>
+<option value="mistral">Mistral 7B</option>
+<option value="qwen">Qwen 2.5 7B</option>
+<option value="phi">Phi-3 Mini (Microsoft)</option>
+</select></div>
+<div class="hint" style="font-size:10px;color:var(--dim);margin-top:4px">Free via Hugging Face Inference API. No key needed. Rate limited but works.</div>
+</div>
+
+<div id="f-ollama" style="display:none">
 <div class="field" style="margin-top:14px"><label>Ollama URL</label><input id="ollamaUrl" value="http://localhost:11434"><div class="hint">Run <code class="mono">ollama serve</code> first, then <code class="mono">ollama pull llama3.2</code></div></div>
 <div class="field"><label>Model</label><select id="ollamaModel"><option>llama3.2</option><option>llama3.2:1b</option><option>llama3.2:3b</option><option>llama3.1:8b</option><option>mistral</option><option>codellama</option><option>qwen2.5:3b</option><option>qwen2.5:7b</option><option>deepseek-coder-v2:16b</option><option>gemma2:2b</option></select></div>
 </div>
@@ -177,14 +190,17 @@ Rules:
 
 function pickP(p){
   provider=p;document.querySelectorAll('.ro').forEach(el=>el.classList.toggle('active',el.dataset.p===p));
-  ['ollama','nvidia','openrouter','openai'].forEach(f=>{const el=document.getElementById('f-'+f);if(el)el.style.display=f===p?'':'none'});
+  ['demo','ollama','nvidia','openrouter','openai'].forEach(f=>{const el=document.getElementById('f-'+f);if(el)el.style.display=f===p?'':'none'});
 }
 
 async function connect(){
   const btn=document.getElementById('btnConnect'),err=document.getElementById('connectErr');
   btn.disabled=true;btn.textContent='Connecting...';err.style.display='none';
   try{
-    if(provider==='ollama'){
+    if(provider==='demo'){
+      model=document.getElementById('demoModel').value;
+      apiUrl='https://api-inference.huggingface.co/models';
+    }else if(provider==='ollama'){
       apiUrl=document.getElementById('ollamaUrl').value.replace(/\/$/,'');
       model=document.getElementById('ollamaModel').value;
       const r=await fetch(apiUrl+'/api/tags');if(!r.ok)throw new Error('Ollama not reachable at '+apiUrl);
@@ -241,6 +257,23 @@ function extractToolCalls(text){const C=[];const rx=/```(python|search|terminal)
 
 async function callModel(){
   const msgs=[{role:'system',content:SP},...chatHistory];
+
+  // Demo mode: Hugging Face Inference API (free, no key)
+  if(provider==='demo'){
+    const modelMap={openchat:'OpenChat/OpenChat-3.5-0106',gemma:'google/gemma-2-9b-it',llama:'meta-llama/Meta-Llama-3.1-8B-Instruct',mistral:'mistralai/Mistral-7B-Instruct-v0.3',qwen:'Qwen/Qwen2.5-7B-Instruct',phi:'microsoft/Phi-3-mini-4k-instruct'};
+    const hfModel=modelMap[model]||model;
+    // Build messages for HF format
+    const hfMsgs=msgs.map(m=>({role:m.role,content:m.content}));
+    const r=await fetch(apiUrl+'/'+hfModel,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({inputs:{messages:hfMsgs,max_new_tokens:2048,temperature:0.7,return_full_text:false}})});
+    if(!r.ok){const e=await r.text();throw new Error('HF API '+r.status+': '+e.slice(0,200))}
+    const d=await r.json();
+    // HF returns [{generated_text: "..."}] or {choices: [{message: {content: "..."}}]}
+    if(Array.isArray(d)&&d[0]?.generated_text)return d[0].generated_text;
+    if(d.choices)return d.choices[0].message?.content||'';
+    if(d[0]?.generated_text)return d[0].generated_text;
+    return JSON.stringify(d).slice(0,500);
+  }
+
   if(provider==='ollama'){
     const r=await fetch(apiUrl+'/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model,messages:msgs,stream:false})});
     if(!r.ok){const e=await r.text();throw new Error('Ollama: '+e.slice(0,200))}const d=await r.json();return d.message?.content||'';
