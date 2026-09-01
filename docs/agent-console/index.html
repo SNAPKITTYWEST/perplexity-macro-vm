@@ -71,10 +71,22 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-
 <div class="onboard" id="onboard">
 <div class="card">
 <h1>Macro VM</h1>
-<p class="sub">Connect to Ollama.</p>
-<div class="field"><label>Ollama URL</label><input id="ollamaUrl" value="http://localhost:11434"><div class="hint">Run <code class="mono">ollama serve</code> then <code class="mono">ollama pull llama3.2</code></div></div>
-<div class="field"><label>Model</label><select id="ollamaModel"><option>llama3.2</option><option>llama3.2:1b</option><option>llama3.2:3b</option><option>llama3.1:8b</option><option>mistral</option><option>codellama</option><option>qwen2.5:3b</option><option>qwen2.5:7b</option><option>deepseek-coder-v2:16b</option><option>gemma2:2b</option></select></div>
-<button class="bp" id="btnConnect" onclick="connect()">Connect</button>
+<p class="sub">Sign in with Ollama Cloud.</p>
+<div class="field"><label>API Key</label><input id="apiKey" type="password" placeholder="ollama key from ollama.com/settings/keys"><div class="hint">Get yours at ollama.com/settings/keys</div></div>
+<div class="field"><label>Model</label><select id="modelPick">
+<option value="gpt-oss:120b">GPT-OSS 120B</option>
+<option value="gpt-oss:20b">GPT-OSS 20B</option>
+<option value="deepseek-v4-flash">DeepSeek V4 Flash</option>
+<option value="deepseek-v4-pro">DeepSeek V4 Pro</option>
+<option value="gemma4:31b">Gemma 4 31B</option>
+<option value="kimi-k3">Kimi K3</option>
+<option value="kimi-k2.6">Kimi K2.6</option>
+<option value="minimax-m3">MiniMax M3</option>
+<option value="mistral-large-3">Mistral Large 3</option>
+<option value="nemotron-3-ultra">Nemotron 3 Ultra</option>
+<option value="qwen3.5:397b">Qwen 3.5 397B</option>
+</select></div>
+<button class="bp" id="btnConnect" onclick="connect()">Sign in</button>
 <p class="em" id="connectErr"></p>
 </div>
 </div>
@@ -83,7 +95,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-
 <header class="topbar">
 <div class="b">Macro VM</div>
 <div class="s"><span class="dot on" id="connDot"></span><span id="modelLabel"></span></div>
-<div class="a"><button class="p" onclick="toggleTerm()">Terminal</button><button class="p" onclick="showSettings()">Settings</button></div>
+<div class="a"><button class="p" onclick="toggleTerm()">Terminal</button><button class="p" onclick="document.getElementById('onboard').classList.remove('hidden')">Sign out</button></div>
 </header>
 <div class="chat" id="chat">
 <div class="wel">
@@ -93,7 +105,6 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-
 <button class="qb" onclick="quickAsk('Calculate the first 20 Fibonacci numbers')">Python math</button>
 <button class="qb" onclick="quickAsk('Search for what is new in WebGPU 2025')">Search web</button>
 <button class="qb" onclick="quickAsk('Write and run a Python function to find primes up to 100')">Run code</button>
-<button class="qb" onclick="quickAsk('What files are in the current directory?')">Terminal</button>
 </div>
 </div>
 </div>
@@ -108,7 +119,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-
 </div>
 
 <script>
-let apiUrl='',model='',chatHistory=[],sending=false,pyodide=null,pyReady=false;
+let apiKey='',model='',chatHistory=[],sending=false,pyodide=null,pyReady=false;
 const SP=`You are a helpful AI assistant with access to tools. You can run Python code, search the web, and execute terminal commands.
 
 To use a tool, emit a fenced code block with the tool name as language tag:
@@ -131,18 +142,19 @@ Rules:
 
 async function connect(){
   const btn=document.getElementById('btnConnect'),err=document.getElementById('connectErr');
-  btn.disabled=true;btn.textContent='Connecting...';err.style.display='none';
+  btn.disabled=true;btn.textContent='Signing in...';err.style.display='none';
   try{
-    apiUrl=document.getElementById('ollamaUrl').value.replace(/\/$/,'');
-    model=document.getElementById('ollamaModel').value;
-    const r=await fetch(apiUrl+'/api/tags');
-    if(!r.ok)throw new Error('Ollama not reachable at '+apiUrl);
+    apiKey=document.getElementById('apiKey').value.trim();
+    model=document.getElementById('modelPick').value;
+    if(!apiKey){throw new Error('Enter your API key')}
+    const r=await fetch('https://ollama.com/api/tags',{headers:{'Authorization':'Bearer '+apiKey}});
+    if(!r.ok){const e=await r.text();throw new Error('Bad API key ('+r.status+')')}
     document.getElementById('onboard').classList.add('hidden');
     document.getElementById('mainApp').style.display='';
     document.getElementById('modelLabel').textContent=model;
-    t('Connected — '+model,'ok');t('Loading Python...','info');initPyodide();
+    t('Signed in — '+model,'ok');t('Loading Python...','info');initPyodide();
   }catch(e){err.textContent=e.message;err.style.display=''}
-  btn.disabled=false;btn.textContent='Connect';
+  btn.disabled=false;btn.textContent='Sign in';
 }
 
 async function initPyodide(){try{pyodide=await loadPyodide();pyReady=true;t('Python ready','ok');document.getElementById('connDot').className='dot on'}catch(e){t('Python error: '+e.message,'err')}}
@@ -173,7 +185,7 @@ function extractToolCalls(text){const C=[];const rx=/```(python|search|terminal)
 
 async function callModel(){
   const msgs=[{role:'system',content:SP},...chatHistory];
-  const r=await fetch(apiUrl+'/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model,messages:msgs,stream:false})});
+  const r=await fetch('https://ollama.com/api/chat',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+apiKey},body:JSON.stringify({model,messages:msgs,stream:false})});
   if(!r.ok){const e=await r.text();throw new Error('Ollama: '+e.slice(0,200))}
   const d=await r.json();return d.message?.content||'';
 }
@@ -204,7 +216,6 @@ function addTyping(){const ch=document.getElementById('chat'),d=document.createE
 function quickAsk(t){document.getElementById('askInput').value=t;send()}
 function t(text,cls){const b=document.getElementById('termBody'),l=document.createElement('div');l.className='tl'+(cls?' '+cls:'');l.textContent=text;b.appendChild(l);b.scrollTop=b.scrollHeight}
 function toggleTerm(){document.getElementById('termPanel').classList.toggle('open')}
-function showSettings(){document.getElementById('onboard').classList.remove('hidden')}
 document.getElementById('askInput')?.addEventListener('input',function(){this.style.height='auto';this.style.height=Math.min(this.scrollHeight,140)+'px'});
 </script>
 </body>
