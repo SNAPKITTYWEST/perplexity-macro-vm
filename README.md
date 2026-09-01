@@ -1,10 +1,19 @@
-# Perplexity Macro VM — Deterministic 16-bit Research VM
+# Perplexity Macro VM
 
-**Patent Pending — BEL ESPRIT D ACCORD TRUST HOLDINGS INC.**
+**Sovereign Source License v1.0** — Copyright (c) 2026 Ahmad Ali Parr + Jessica Westerhoff, BEL ESPRIT D ACCORD TRUST HOLDINGS INC. Patent Pending.
 
-Deterministic 16-bit research VM that runs Perplexity-style planning → search → evidence → critique → synthesis compiled to ROM. Elixir GenServer OTP + Phoenix LiveView streams every retired instruction. Host does web/model/code work behind typed capability boundaries; VM owns control flow.
+Deterministic 16-bit research VM that runs Perplexity-style planning, search, evidence, critique, and synthesis compiled to ROM. Elixir GenServer OTP + Phoenix LiveView streams every retired instruction. Host does web/model/code work behind typed capability boundaries; VM owns control flow.
 
-> **Live Agent Console → https://snapkittywest.github.io/perplexity-macro-vm/agent-console/** — Phoenix LiveView control surface · WASM Box + Pyodide IPython · VM owns control, broker owns evidence · 22 tools mediated · static fallback when LiveView offline. Local: `docs/agent-console/`
+> **Live Agent Console** — https://snapkittywest.github.io/perplexity-macro-vm/
+
+## Features
+
+- **Ollama / OpenAI / OpenRouter** model integration (local or cloud)
+- **Python execution** via Pyodide (runs in browser, no server needed)
+- **Web search** via DuckDuckGo (client-side)
+- **Terminal tools** (client-side simulation, backend-ready)
+- **Tool calling protocol** — model can invoke tools automatically
+- **Deterministic VM** — 16-bit, 65K words, typed capabilities, transcript hashing
 
 ## Architecture
 
@@ -13,9 +22,9 @@ Deterministic 16-bit research VM that runs Perplexity-style planning → search 
                               ^ PubSub
                      TraceHub (ring buffer 50k)
                               ^ {:retired, trace}
-MacroVM GenServer — fetch/decode/execute → commit → emit one trace
+MacroVM GenServer — fetch/decode/execute -> commit -> emit one trace
       ^ capability request | host result v
-ResearchBroker (search/fetch/LLM/evidence)   Compiler (.pqm → ROM)
+ResearchBroker (search/fetch/LLM/evidence)   Compiler (.pqm -> ROM)
 ```
 
 VM owns control flow and acceptance policy. Host returns typed evidence records to a waiting `RQ` instruction.
@@ -59,9 +68,60 @@ State: %State{rom, ram, regs, cycles, retired, halted?, waiting?, fuel=128, tran
 | 29 | EMIT kind,ptr,len | 3 | checkpoint |
 | 2A | CONFIRM cap | 2 | one-shot auth |
 
-Capabilities: `01=search 02=fetch 03=browser 04=code 05=local_model 06=file_read 07=file_write 08=calendar 09=email` — sensitive require `CONFIRM` + expiring token. See `lib/perplexity_macro/capability.ex`.
+Capabilities: `01=search 02=fetch 03=browser 04=code 05=local_model 06=file_read 07=file_write 08=calendar 09=email` — sensitive require `CONFIRM` + expiring token.
 
-## Macro Language `.pqm`
+## Agent Console
+
+**Live:** https://snapkittywest.github.io/perplexity-macro-vm/
+
+Clean chat interface with tool calling:
+
+1. **Connect** — Pick provider (Ollama/OpenRouter/OpenAI), enter credentials
+2. **Chat** — Ask anything, model can call tools automatically
+3. **Tools** — Python (Pyodide), web search (DuckDuckGo), terminal
+4. **Terminal panel** — Toggle to see tool execution log
+
+```
+Onboarding -> Provider Selection -> Chat Interface
+                                         |
+                              Tool Detection (```python, ```search, ```terminal)
+                                         |
+                              Tool Execution (Pyodide / API / simulated)
+                                         |
+                              Result -> Model -> Answer
+```
+
+### Tool Calling
+
+The model can invoke tools by emitting fenced code blocks:
+
+```python
+# Python execution (Pyodide, runs in browser)
+import numpy as np
+print(np.mean([1, 2, 3, 4, 5]))
+```
+
+```search
+WebGPU latest news 2025
+```
+
+```terminal
+ls -la
+```
+
+Results are fed back to the model for synthesis.
+
+### Run locally
+
+```bash
+# Just open the HTML file
+open docs/agent-console/index.html
+
+# Or serve with Python
+cd docs/agent-console && python -m http.server 8080
+```
+
+## Macro Language .pqm
 
 `programs/research_loop.pqm` — declarative research logic compiled to ROM.
 
@@ -76,75 +136,50 @@ synthesize: request local_model, render_cited_answer -> await -> verify -> emit 
 critique: request search, counterevidence -> await -> verify -> jump synthesize
 ```
 
-Compiler: `lexer -> parser -> typed AST -> policy checker -> CFG -> label resolution -> opcode selection -> .pqr + .pqmap + manifest.json`. Rejects unbounded back-jumps without `FUEL`, sensitive caps without `CONFIRM`, unreachable `HALT`, ROM writes, `EMIT final` without coverage.
+Compiler: `lexer -> parser -> typed AST -> policy checker -> CFG -> label resolution -> opcode selection -> .pqr + .pqmap + manifest.json`.
 
 ## API Endpoints (Research Host)
 
-All via `ResearchBroker` → `Adapters.*`. Every adapter returns normalized TLV-compatible maps with `source_hash`.
+All via `ResearchBroker` -> `Adapters.*`. Every adapter returns normalized TLV-compatible maps with `source_hash`.
 
-* **Tavily** `Adapters.Search` — `POST https://api.tavily.com/search` (`search_depth=advanced`, `max_results=5`)
-* **Wikipedia** `Adapters.Wikipedia` — `GET https://en.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext&titles=`
-* **Mathematica** `Adapters.Mathematica` — `POST https://api.wolframalpha.com/v1/query?appid=&input=` (or local `WolframEngine` bridge)
-* **Dictionary** `Adapters.Dictionary` — `GET https://api.dictionaryapi.dev/api/v2/entries/en/<word>` + local `WordNet` fallback
-* **Fetch** `Adapters.Fetch` — generic `GET` with allowlist, size/MIME/rate limits, `Req` + `Floki` extract
-* **Browser** `Adapters.Browser` — `Playwright` automation, canonicalize URL
-* **Code** `Adapters.Code` — sandboxed `bwrap`/`nsjail` Python/JS
-* **Local Model** `Adapters.LocalModel` — `Ollama`/`LM Studio` `POST /v1/chat/completions`
+* **Tavily** `Adapters.Search` — `POST https://api.tavily.com/search`
+* **Wikipedia** `Adapters.Wikipedia` — `GET https://en.wikipedia.org/w/api.php`
+* **Mathematica** `Adapters.Mathematica` — `POST https://api.wolframalpha.com/v1/query`
+* **Dictionary** `Adapters.Dictionary` — `GET https://api.dictionaryapi.dev/api/v2/entries/en/<word>`
+* **Fetch** `Adapters.Fetch` — generic GET with allowlist
+* **Browser** `Adapters.Browser` — Playwright automation
+* **Code** `Adapters.Code` — sandboxed Python/JS
+* **Local Model** `Adapters.LocalModel` — Ollama/LM Studio
 
-Each result TLV: `{title, url, content, score, source_hash: phash2(url)}` at `0x46` length `0xC6` CRC16.
+## Run (Elixir Backend)
 
-## Host — ROM Mailbox
-
-Zero-page `$00:$00=phase $01=fuel $02=cap $03=status`. Host `ROM` GenServer (`:ets` `:rom_mailbox`) bridges emulator: `handle_call {:read_mailbox}` → `cap/query/nonce`, `handle_cast {:write_result, tlv, crc16}` → writes `0x46` + `0xC6` + `STATUS=0x02`. See `lib/perplexity_macro/rom.ex` and `cfg/macro_rom.cfg` (`ZP $0000/0100`, `ROM $8000/8000`).
-
-## Verification Targets (Lean)
-
-* PC in ROM, no ROM writes, `FUEL` halts loops, every `cycles` increment, `RQ` only manifest caps, `CONFIRM` for sensitive, `EMIT final` requires coverage, replay determinism (registers/RAM/page hashes). See `proofs/MacroProtocol.lean`.
+```bash
+mix deps.get
+mix test
+iex -S mix
+# Phoenix at http://localhost:4000
+mix compile.pqm programs/research_loop.pqm --out priv/rom/
+```
 
 ## Layout
 
 ```
 cfg/macro_rom.cfg
 asm/crc16.s
-lib/perplexity_macro/{rom,capability,compiler,lexer,parser,policy,vm/{state,decoder,executor,memory,inspector,trace},research/{broker,evidence,mailbox,adapters/{search,wikipedia,mathematica,dictionary,fetch,browser,code,local_model}},trace_hub}
-proofs/MacroProtocol.lean
-programs/research_loop.pqm
-priv/rom/research_loop.pqr
-test/
+docs/agent-console/          # Frontend (static, GitHub Pages)
+apps/AgentConsole/           # Swift frontend
+java-sdk/                    # Java SDK (Maven)
+lib/perplexity_macro/        # Elixir backend
+proofs/MacroProtocol.lean    # Verification
+programs/research_loop.pqm   # VM programs
+priv/rom/                    # Compiled ROM
 ```
 
-## Agent Console (GitHub Pages + Swift + Sandbox)
+## License
 
-**Live:** https://snapkittywest.github.io/perplexity-macro-vm/agent-console/ — super-clean Swift-fronted chat (Tokamak/SwiftWasm in `apps/AgentConsole/`, static at `docs/agent-console/`).
+**Sovereign Source License v1.0**
 
-```
-Phoenix LiveView (Agent Console)
-  instruction → PLAN → EXECUTE → OBSERVE   VM Trace | Memory | Tools | Python
-                         │ WebSocket / PubSub (TraceHub 50k ring)
-                  AGENT RUNTIME (planner · dispatcher · transcript)
-                        │
-          ┌─────────────┼──────────────┐
-       Macro VM      WASM Box       Tool Broker
-       16-bit        Python         search/fetch/browser/code/local_model/wikipedia/mathematica/dictionary
-       ROM/RAM       IPython        + Sovereign Tool API (14 tools) + macrogrok
-                     Pyodide        (sovereign-tool-api.mjs — 22 total)
-```
+Copyright (c) 2026 Ahmad Ali Parr + Jessica Westerhoff
+BEL ESPRIT D ACCORD TRUST HOLDINGS INC.
 
-WASM Box is isolated — `python.execute/inspect/reset/install` has no direct net/fs; `tools.search()` inside Python is mediated → Capability Router → `CONFIRM 0x2A` for sensitive caps → ResearchBroker → TLV@$46 CRC16@$C6 → VM. See `docs/agent-console/README.md` and `apps/AgentConsole/README.md`.
-
-**Swift:** `swift run AgentConsoleApp` (also `carton build` for browser WASM). Phoenix integration: `lib/perplexity_macro/tool_router.ex` + `wasm_box.ex` + `lib/perplexity_macro_web/live/agent_console_live.ex`.
-
-## Run
-
-```bash
-mix deps.get
-mix test
-iex -S mix  # PerplexityMacro.Application starts ROM + VM + TraceHub + Endpoint
-# Phoenix LiveView at http://localhost:4000 — Run/Step/Pause, trace table, memory hex
-# Agent Console at http://localhost:4000/agent_console (LiveView) or docs/agent-console/ (static)
-mix compile.pqm programs/research_loop.pqm --out priv/rom/
-```
-
-## Legal
-
-Copyright (c) 2026 BEL ESPRIT D ACCORD TRUST HOLDINGS INC. Patent Pending.
+This software is provided under the Sovereign Source License. Use, modification, and distribution are permitted only as authorized by the copyright holders. Patent Pending.

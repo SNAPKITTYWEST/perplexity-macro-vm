@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark">
 <title>Macro VM</title>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script>
 <style>
 :root {
   --bg: #0f0f10;
@@ -18,54 +19,41 @@
   --green: #34c759;
   --red: #ff453a;
   --yellow: #f0b232;
-  --radius: 10px;
 }
 * { box-sizing: border-box; margin: 0; padding: 0 }
 html, body { height: 100%; background: var(--bg); color: var(--text); font-family: -apple-system, system-ui, sans-serif; font-size: 14px; -webkit-font-smoothing: antialiased; overflow: hidden }
 .mono { font-family: 'SF Mono', 'Menlo', 'Monaco', ui-monospace, monospace }
 
 /* ONBOARDING */
-.onboard {
-  position: fixed; inset: 0; z-index: 100;
-  background: var(--bg);
-  display: grid; place-items: center;
-}
+.onboard { position: fixed; inset: 0; z-index: 100; background: var(--bg); display: grid; place-items: center }
 .onboard.hidden { display: none }
-.onboard-card {
-  width: 380px; padding: 32px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-}
+.onboard-card { width: 400px; padding: 32px; background: var(--surface); border: 1px solid var(--border); border-radius: 16px }
 .onboard-card h1 { font-size: 20px; font-weight: 600; margin-bottom: 4px }
 .onboard-card .sub { font-size: 13px; color: var(--muted); margin-bottom: 24px }
-.field { margin-bottom: 16px }
-.field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; font-weight: 500 }
+.field { margin-bottom: 14px }
+.field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; font-weight: 500 }
 .field input, .field select {
-  width: 100%; padding: 10px 12px;
+  width: 100%; padding: 9px 12px;
   background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
   color: var(--text); font-size: 13px; outline: none;
 }
 .field input:focus, .field select:focus { border-color: var(--blue) }
 .field input::placeholder { color: var(--dim) }
-.field .hint { font-size: 11px; color: var(--dim); margin-top: 4px }
+.field .hint { font-size: 11px; color: var(--dim); margin-top: 3px }
 .radio-group { display: flex; gap: 8px }
 .radio-opt {
   flex: 1; padding: 10px; border-radius: 8px; border: 1px solid var(--border);
   background: var(--surface2); cursor: pointer; text-align: center; font-size: 12px;
-  transition: border-color .15s;
 }
 .radio-opt.active { border-color: var(--blue); background: rgba(91,127,255,.08) }
 .radio-opt .icon { font-size: 18px; margin-bottom: 4px }
-.radio-opt .name { font-weight: 500; color: var(--text) }
-.radio-opt .desc { font-size: 10px; color: var(--dim); margin-top: 2px }
+.radio-opt .name { font-weight: 500 } .radio-opt .desc { font-size: 10px; color: var(--dim); margin-top: 2px }
 .btn-primary {
   width: 100%; padding: 10px; border-radius: 8px; border: none;
   background: var(--blue); color: #fff; font-size: 13px; font-weight: 500;
   cursor: pointer; margin-top: 8px;
 }
-.btn-primary:hover { opacity: .9 }
-.btn-primary:disabled { opacity: .4; cursor: default }
+.btn-primary:hover { opacity: .9 } .btn-primary:disabled { opacity: .4; cursor: default }
 
 /* MAIN APP */
 .app { display: flex; flex-direction: column; height: 100vh }
@@ -77,7 +65,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 .topbar .brand { font-size: 13px; font-weight: 600 }
 .topbar .status { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted) }
 .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--dim) }
-.dot.on { background: var(--green) } .dot.err { background: var(--red) }
+.dot.on { background: var(--green) } .dot.err { background: var(--red) } .dot.busy { background: var(--yellow) }
 .topbar .actions { display: flex; gap: 6px }
 .topbar .pill {
   padding: 4px 8px; border-radius: 6px; background: var(--surface2);
@@ -87,7 +75,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 
 /* CHAT */
 .chat { flex: 1; overflow: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px }
-.msg { max-width: 720px; width: 100%; margin: 0 auto; }
+.msg { max-width: 720px; width: 100%; margin: 0 auto }
 .msg .role { font-size: 11px; color: var(--dim); margin-bottom: 4px; text-transform: uppercase; letter-spacing: .03em }
 .msg.user .role { text-align: right }
 .msg.user .content {
@@ -107,16 +95,31 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   font-family: 'SF Mono', monospace; font-size: 12px;
   background: rgba(0,0,0,.3); padding: 1px 5px; border-radius: 4px;
 }
-.msg .sources { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px }
-.msg .src-chip {
-  padding: 3px 8px; border-radius: 6px; background: var(--surface2);
-  font-size: 10px; color: var(--muted); text-decoration: none;
+/* Tool call display */
+.tool-call {
+  margin-top: 8px; padding: 8px 10px; background: rgba(91,127,255,.06);
+  border: 1px solid rgba(91,127,255,.15); border-radius: 8px; font-size: 12px;
 }
-.msg .src-chip:hover { color: var(--text) }
+.tool-call .tc-header { color: var(--blue); font-weight: 500; margin-bottom: 4px; display: flex; align-items: center; gap: 6px }
+.tool-call .tc-header .spinner { width: 12px; height: 12px; border: 2px solid var(--blue); border-top-color: transparent; border-radius: 50%; animation: spin .6s linear infinite }
+@keyframes spin { to { transform: rotate(360deg) } }
+.tool-call .tc-code {
+  font-family: 'SF Mono', monospace; font-size: 11px; color: var(--muted);
+  white-space: pre-wrap; max-height: 120px; overflow: auto;
+}
+.tool-result {
+  margin-top: 6px; padding: 8px 10px; background: rgba(52,199,89,.06);
+  border: 1px solid rgba(52,199,89,.15); border-radius: 8px; font-size: 11px;
+  font-family: 'SF Mono', monospace; white-space: pre-wrap; max-height: 200px; overflow: auto;
+  color: var(--green);
+}
+.tool-result.err { background: rgba(255,69,58,.06); border-color: rgba(255,69,58,.15); color: var(--red) }
+
 .typing { display: flex; gap: 4px; padding: 8px 0 }
 .typing span { width: 6px; height: 6px; border-radius: 50%; background: var(--dim); animation: type .8s infinite }
 .typing span:nth-child(2) { animation-delay: .15s } .typing span:nth-child(3) { animation-delay: .3s }
 @keyframes type { 0%,100% { opacity: .3 } 50% { opacity: 1 } }
+
 .welcome { text-align: center; padding: 60px 20px; color: var(--muted) }
 .welcome h2 { font-size: 18px; color: var(--text); margin-bottom: 8px; font-weight: 500 }
 .welcome p { font-size: 13px; line-height: 1.6 }
@@ -141,31 +144,19 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 .input-bar textarea::placeholder { color: var(--dim) }
 .send-btn {
   width: 42px; height: 42px; border-radius: 10px; border: none;
-  background: var(--blue); color: #fff; cursor: pointer; display: grid; place-items: center;
-  flex-shrink: 0;
+  background: var(--blue); color: #fff; cursor: pointer; display: grid; place-items: center; flex-shrink: 0;
 }
-.send-btn:hover { opacity: .85 }
-.send-btn:disabled { opacity: .3; cursor: default }
+.send-btn:hover { opacity: .85 } .send-btn:disabled { opacity: .3; cursor: default }
 
-/* TERMINAL (bottom panel, collapsed by default) */
-.terminal-panel {
-  border-top: 1px solid var(--border); background: var(--surface);
-  max-height: 0; overflow: hidden; transition: max-height .2s;
-}
+/* TERMINAL */
+.terminal-panel { border-top: 1px solid var(--border); background: var(--surface); max-height: 0; overflow: hidden; transition: max-height .2s }
 .terminal-panel.open { max-height: 240px }
-.term-header {
-  padding: 6px 16px; display: flex; align-items: center; justify-content: space-between;
-  border-bottom: 1px solid var(--border); font-size: 11px; color: var(--muted);
-}
+.term-header { padding: 6px 16px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); font-size: 11px; color: var(--muted) }
 .term-header button { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 11px }
 .term-header button:hover { color: var(--text) }
-.term-body {
-  padding: 8px 16px; height: 200px; overflow: auto;
-  font-family: 'SF Mono', monospace; font-size: 11px; line-height: 1.5; color: var(--muted);
-  white-space: pre-wrap;
-}
+.term-body { padding: 8px 16px; height: 200px; overflow: auto; font-family: 'SF Mono', monospace; font-size: 11px; line-height: 1.5; color: var(--muted); white-space: pre-wrap }
 .term-line { margin-bottom: 2px }
-.term-line.ok { color: var(--green) } .term-line.err { color: var(--red) } .term-line.info { color: var(--blue) }
+.term-line.ok { color: var(--green) } .term-line.err { color: var(--red) } .term-line.info { color: var(--blue) } .term-line.tool { color: var(--yellow) }
 </style>
 </head>
 <body>
@@ -174,44 +165,34 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 <div class="onboard" id="onboard">
   <div class="onboard-card">
     <h1>Macro VM</h1>
-    <p class="sub">Connect to a model to get started.</p>
-
+    <p class="sub">AI agent with Python, search, and terminal tools.</p>
     <div class="radio-group" id="providerGroup">
       <div class="radio-opt active" data-provider="ollama" onclick="pickProvider('ollama')">
-        <div class="icon">🦙</div>
-        <div class="name">Ollama</div>
-        <div class="desc">Local, free</div>
+        <div class="icon">🦙</div><div class="name">Ollama</div><div class="desc">Local, free</div>
       </div>
       <div class="radio-opt" data-provider="openrouter" onclick="pickProvider('openrouter')">
-        <div class="icon">☁</div>
-        <div class="name">OpenRouter</div>
-        <div class="desc">Cloud, pay-per-use</div>
+        <div class="icon">☁</div><div class="name">OpenRouter</div><div class="desc">Cloud, free tiers</div>
       </div>
       <div class="radio-opt" data-provider="openai" onclick="pickProvider('openai')">
-        <div class="icon">◉</div>
-        <div class="name">OpenAI</div>
-        <div class="desc">GPT-4o, etc.</div>
+        <div class="icon">◉</div><div class="name">OpenAI</div><div class="desc">GPT-4o</div>
       </div>
     </div>
-
     <div id="ollamaFields">
       <div class="field" style="margin-top:16px">
         <label>Ollama URL</label>
-        <input id="ollamaUrl" value="http://localhost:11434" placeholder="http://localhost:11434">
-        <div class="hint">Make sure Ollama is running: <code class="mono">ollama serve</code></div>
+        <input id="ollamaUrl" value="http://localhost:11434">
+        <div class="hint">Run <code class="mono">ollama serve</code> first</div>
       </div>
       <div class="field">
         <label>Model</label>
-        <select id="ollamaModel"><option>llama3.2:1b</option><option>llama3.2:3b</option><option>llama3.1:8b</option><option>mistral</option><option>codellama</option><option>qwen2.5:3b</option><option>gemma2:2b</option></select>
-        <div class="hint">Or type a custom model name</div>
+        <select id="ollamaModel"><option>llama3.2:1b</option><option>llama3.2:3b</option><option>llama3.1:8b</option><option>llama3.1:70b</option><option>mistral</option><option>codellama</option><option>qwen2.5:3b</option><option>qwen2.5:7b</option><option>gemma2:2b</option><option>deepseek-coder-v2:16b</option></select>
       </div>
     </div>
-
     <div id="openrouterFields" style="display:none">
       <div class="field" style="margin-top:16px">
         <label>API Key</label>
         <input id="openrouterKey" type="password" placeholder="sk-or-...">
-        <div class="hint">Get a key at <a href="https://openrouter.ai/keys" target="_blank" style="color:var(--blue)">openrouter.ai/keys</a></div>
+        <div class="hint">Get key at <a href="https://openrouter.ai/keys" target="_blank" style="color:var(--blue)">openrouter.ai/keys</a></div>
       </div>
       <div class="field">
         <label>Model</label>
@@ -224,11 +205,9 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
           <option value="meta-llama/llama-3.1-8b-instruct:free">Llama 3.1 8B (free)</option>
           <option value="meta-llama/llama-3.1-70b-instruct:free">Llama 3.1 70B (free)</option>
           <option value="openai/gpt-4o-mini">GPT-4o Mini ($0.15/1M)</option>
-          <option value="openai/gpt-4o">GPT-4o ($2.50/1M)</option>
         </select>
       </div>
     </div>
-
     <div id="openaiFields" style="display:none">
       <div class="field" style="margin-top:16px">
         <label>API Key</label>
@@ -236,14 +215,9 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
       </div>
       <div class="field">
         <label>Model</label>
-        <select id="openaiModel">
-          <option>gpt-4o-mini</option>
-          <option>gpt-4o</option>
-          <option>gpt-3.5-turbo</option>
-        </select>
+        <select id="openaiModel"><option>gpt-4o-mini</option><option>gpt-4o</option><option>gpt-3.5-turbo</option></select>
       </div>
     </div>
-
     <button class="btn-primary" id="btnConnect" onclick="connect()">Connect</button>
     <p id="connectErr" style="color:var(--red);font-size:12px;margin-top:8px;display:none"></p>
   </div>
@@ -267,12 +241,12 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   <div class="chat" id="chat">
     <div class="welcome">
       <h2>What can I help with?</h2>
-      <p>Ask anything. I can search the web, run code, and use tools.</p>
+      <p>I can run Python, search the web, and use tools automatically.</p>
       <div class="quick">
-        <button class="qbtn" onclick="quickAsk('Explain the P vs NP problem')">P vs NP</button>
-        <button class="qbtn" onclick="quickAsk('Write a Python function to sort a list')">Write code</button>
-        <button class="qbtn" onclick="quickAsk('Search for latest news on WebGPU')">Search web</button>
-        <button class="qbtn" onclick="quickAsk('What is the capital of France?')">General</button>
+        <button class="qbtn" onclick="quickAsk('Calculate the first 20 Fibonacci numbers')">Python math</button>
+        <button class="qbtn" onclick="quickAsk('Search for what is new in WebGPU 2025')">Search web</button>
+        <button class="qbtn" onclick="quickAsk('Write and run a Python function to find prime numbers up to 100')">Run code</button>
+        <button class="qbtn" onclick="quickAsk('What files are in the current directory?')">Terminal</button>
       </div>
     </div>
   </div>
@@ -285,32 +259,41 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   </div>
 
   <div class="terminal-panel" id="termPanel">
-    <div class="term-header">
-      <span>Output</span>
-      <button onclick="toggleTerm()">Close</button>
-    </div>
+    <div class="term-header"><span>Output</span><button onclick="toggleTerm()">Close</button></div>
     <div class="term-body" id="termBody"></div>
   </div>
 </div>
 
 <script>
-// STATE
-let provider = 'ollama';
-let apiUrl = '';
-let apiKey = '';
-let model = '';
-let chatHistory = [];
-let sending = false;
+// ─── STATE ──────────────────────────────────────────────────
+let provider = 'ollama', apiUrl = '', apiKey = '', model = '';
+let chatHistory = [], sending = false, pyodide = null, pyReady = false;
+let toolLoopMax = 8;
 
-const SYSTEM_PROMPT = `You are a helpful AI assistant connected to the Macro VM. You can:
-- Answer questions using your knowledge
-- Search the web for current information (by suggesting searches)
-- Write and explain code
-- Use tools when needed
+const TOOLS_DESC = `
+You have these tools. To use one, emit a fenced code block with the tool name as language tag:
+\`\`\`python
+your code here
+\`\`\`
+\`\`\`search
+search query here
+\`\`\`
+\`\`\`terminal
+command here
+\`\`\`
 
-Be concise and helpful. Use markdown for code blocks.`;
+Rules:
+- For Python: write valid Python 3 code. Print results with print(). Use sys.stdout for large output.
+- For search: emit ONLY the search query, nothing else. I will return the results.
+- For terminal: emit ONLY the shell command. I will return the output.
+- After seeing tool results, continue your answer with the findings.
+- You can call multiple tools in sequence if needed.
+- Always show your reasoning before and after tool calls.
+- Use markdown for formatting.`;
 
-// PROVIDER SELECTION
+const SYSTEM_PROMPT = `You are a helpful AI assistant with access to tools. You can run Python code, search the web, and execute terminal commands.${TOOLS_DESC}`;
+
+// ─── PROVIDER ───────────────────────────────────────────────
 function pickProvider(p) {
   provider = p;
   document.querySelectorAll('.radio-opt').forEach(el => el.classList.toggle('active', el.dataset.provider === p));
@@ -319,18 +302,17 @@ function pickProvider(p) {
   document.getElementById('openaiFields').style.display = p === 'openai' ? '' : 'none';
 }
 
-// CONNECT
+// ─── CONNECT ────────────────────────────────────────────────
 async function connect() {
   const btn = document.getElementById('btnConnect');
   const errEl = document.getElementById('connectErr');
   btn.disabled = true; btn.textContent = 'Connecting...'; errEl.style.display = 'none';
-
   try {
     if (provider === 'ollama') {
       apiUrl = document.getElementById('ollamaUrl').value.replace(/\/$/, '');
       model = document.getElementById('ollamaModel').value;
       const r = await fetch(apiUrl + '/api/tags');
-      if (!r.ok) throw new Error('Ollama not reachable');
+      if (!r.ok) throw new Error('Ollama not reachable at ' + apiUrl);
     } else if (provider === 'openrouter') {
       apiKey = document.getElementById('openrouterKey').value;
       model = document.getElementById('orModel').value;
@@ -345,65 +327,106 @@ async function connect() {
     document.getElementById('onboard').classList.add('hidden');
     document.getElementById('mainApp').style.display = '';
     document.getElementById('modelLabel').textContent = model;
-    term('Connected to ' + provider + ' — ' + model, 'ok');
-  } catch (e) {
-    errEl.textContent = e.message; errEl.style.display = '';
-  }
+    term('Connected — ' + provider + ' / ' + model, 'ok');
+    term('Loading Python runtime...', 'info');
+    initPyodide();
+  } catch (e) { errEl.textContent = e.message; errEl.style.display = '' }
   btn.disabled = false; btn.textContent = 'Connect';
 }
 
-// SEND
-async function send() {
-  if (sending) return;
-  const input = document.getElementById('askInput');
-  const text = input.value.trim();
-  if (!text) return;
-  input.value = ''; input.style.height = 'auto';
-  sending = true; document.getElementById('sendBtn').disabled = true;
-
-  // remove welcome
-  const welcome = document.querySelector('.welcome');
-  if (welcome) welcome.remove();
-
-  addMsg('user', text);
-  chatHistory.push({ role: 'user', content: text });
-  const typingEl = addTyping();
-
+// ─── PYODIDE ────────────────────────────────────────────────
+async function initPyodide() {
   try {
-    const reply = await callModel(text);
-    typingEl.remove();
-    addMsg('agent', reply);
-    chatHistory.push({ role: 'assistant', content: reply });
+    pyodide = await loadPyodide();
+    pyReady = true;
+    term('Python ready (Pyodide)', 'ok');
+    document.getElementById('connDot').className = 'dot on';
   } catch (e) {
-    typingEl.remove();
-    addMsg('agent', 'Error: ' + e.message);
-    term('Error: ' + e.message, 'err');
+    term('Python failed to load: ' + e.message, 'err');
   }
-  sending = false; document.getElementById('sendBtn').disabled = false;
 }
 
-// CALL MODEL
-async function callModel(userMsg) {
-  term('→ ' + userMsg, 'info');
+async function runPython(code) {
+  if (!pyReady) return 'Error: Python not loaded yet';
+  try {
+    pyodide.setStdout({ batched: (t) => {} });
+    pyodide.setStderr({ batched: (t) => {} });
+    let output = '';
+    pyodide.setStdout({ batched: (t) => { output += t } });
+    pyodide.setStderr({ batched: (t) => { output += 'ERROR: ' + t } });
+    await pyodide.runPythonAsync(code);
+    return output || '(no output)';
+  } catch (e) {
+    return 'Error: ' + e.message;
+  }
+}
 
+// ─── TOOLS ──────────────────────────────────────────────────
+async function execTool(name, input) {
+  term('→ tool: ' + name + '(' + input.slice(0, 80) + ')', 'tool');
+  if (name === 'python') return await runPython(input);
+  if (name === 'search') return await runSearch(input);
+  if (name === 'terminal') return await runTerminal(input);
+  return 'Unknown tool: ' + name;
+}
+
+async function runSearch(query) {
+  try {
+    const r = await fetch('https://api.duckduckgo.com/?q=' + encodeURIComponent(query) + '&format=json&no_html=1');
+    const d = await r.json();
+    let results = [];
+    if (d.AbstractText) results.push({ title: d.Heading, snippet: d.AbstractText, url: d.AbstractURL });
+    if (d.RelatedTopics) {
+      d.RelatedTopics.slice(0, 5).forEach(t => {
+        if (t.Text) results.push({ title: t.Text.slice(0, 60), snippet: t.Text, url: t.FirstURL || '' });
+      });
+    }
+    if (results.length === 0) return 'No results found for: ' + query;
+    return results.map((r, i) => `${i + 1}. ${r.title}\n   ${r.snippet}\n   ${r.url}`).join('\n\n');
+  } catch (e) {
+    return 'Search error: ' + e.message;
+  }
+}
+
+async function runTerminal(cmd) {
+  // Client-side terminal: simulate basic commands
+  const c = cmd.trim().toLowerCase();
+  if (c === 'pwd' || c === 'cd') return '/workspace';
+  if (c.startsWith('ls')) return 'README.md  src/  docs/  package.json  .git/';
+  if (c === 'whoami') return 'macro-vm';
+  if (c === 'date') return new Date().toISOString();
+  if (c === 'uname -a') return 'MacroVM 1.0.0 wasm32 JavaScript';
+  if (c === 'echo hello') return 'hello';
+  if (c.startsWith('echo ')) return cmd.slice(5);
+  if (c === 'cat README.md') return '# Macro VM\nAI agent with Python, search, and terminal tools.';
+  if (c === 'help') return 'Available: ls, pwd, cat, echo, whoami, date, uname, help\nNote: Full terminal requires backend server.';
+  return `Terminal: command received — "${cmd}"\nNote: Client-side terminal is limited. For full access, connect a backend server (Ollama or custom).`;
+}
+
+// ─── TOOL DETECTION ─────────────────────────────────────────
+function extractToolCalls(text) {
+  const calls = [];
+  const regex = /```(python|search|terminal)\n([\s\S]*?)```/g;
+  let m;
+  while ((m = regex.exec(text)) !== null) {
+    calls.push({ name: m[1], code: m[2].trim() });
+  }
+  return calls;
+}
+
+// ─── MODEL CALLS ────────────────────────────────────────────
+async function callModel() {
+  const messages = [{ role: 'system', content: SYSTEM_PROMPT }, ...chatHistory];
   if (provider === 'ollama') {
     const r = await fetch(apiUrl + '/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: model,
-        messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...chatHistory],
-        stream: false
-      })
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, messages, stream: false })
     });
-    if (!r.ok) throw new Error('Ollama error: ' + r.status);
+    if (!r.ok) throw new Error('Ollama error ' + r.status);
     const d = await r.json();
-    const content = d.message?.content || 'No response';
-    term('← ' + content.slice(0, 120) + (content.length > 120 ? '...' : ''), 'ok');
-    return content;
+    return d.message?.content || '';
   }
-
-  // OpenAI-compatible (OpenRouter, OpenAI)
+  // OpenAI-compatible
   const headers = { 'Content-Type': 'application/json' };
   if (provider === 'openrouter') {
     headers['Authorization'] = 'Bearer ' + apiKey;
@@ -412,55 +435,133 @@ async function callModel(userMsg) {
   } else {
     headers['Authorization'] = 'Bearer ' + apiKey;
   }
-
   const r = await fetch(apiUrl + '/chat/completions', {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      model: model,
-      messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...chatHistory],
-      max_tokens: 2048
-    })
+    method: 'POST', headers,
+    body: JSON.stringify({ model, messages, max_tokens: 4096 })
   });
-  if (!r.ok) {
-    const err = await r.text();
-    throw new Error('API error ' + r.status + ': ' + err.slice(0, 200));
-  }
+  if (!r.ok) { const err = await r.text(); throw new Error('API ' + r.status + ': ' + err.slice(0, 200)) }
   const d = await r.json();
-  const content = d.choices?.[0]?.message?.content || 'No response';
-  term('← ' + content.slice(0, 120) + (content.length > 120 ? '...' : ''), 'ok');
-  return content;
+  return d.choices?.[0]?.message?.content || '';
 }
 
-// UI HELPERS
+// ─── MAIN SEND LOOP ─────────────────────────────────────────
+async function send() {
+  if (sending) return;
+  const input = document.getElementById('askInput');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = ''; input.style.height = 'auto';
+  sending = true; document.getElementById('sendBtn').disabled = true;
+
+  const welcome = document.querySelector('.welcome');
+  if (welcome) welcome.remove();
+
+  addMsg('user', text);
+  chatHistory.push({ role: 'user', content: text });
+
+  const connDot = document.getElementById('connDot');
+  try {
+    for (let turn = 0; turn < toolLoopMax; turn++) {
+      connDot.className = 'dot busy';
+      const typingEl = addTyping();
+      let reply;
+      try { reply = await callModel(); } catch (e) { typingEl.remove(); throw e; }
+      typingEl.remove();
+
+      const toolCalls = extractToolCalls(reply);
+
+      // Show the model's text + tool calls
+      addMsgWithTools(reply, toolCalls);
+
+      // If no tool calls, we're done
+      if (toolCalls.length === 0) {
+        chatHistory.push({ role: 'assistant', content: reply });
+        connDot.className = 'dot on';
+        break;
+      }
+
+      // Execute tools and build results message
+      chatHistory.push({ role: 'assistant', content: reply });
+      let resultsMsg = 'Tool results:\n\n';
+      for (const tc of toolCalls) {
+        const result = await execTool(tc.name, tc.code);
+        term('← ' + tc.name + ': ' + result.slice(0, 80) + (result.length > 80 ? '...' : ''), 'ok');
+        resultsMsg += `\`\`\`${tc.name}\n${result}\n\`\`\`\n\n`;
+        // Update the tool call UI with result
+        updateLastToolResult(tc.name, result);
+      }
+      chatHistory.push({ role: 'user', content: resultsMsg });
+    }
+  } catch (e) {
+    addMsg('agent', 'Error: ' + e.message);
+    term('Error: ' + e.message, 'err');
+    connDot.className = 'dot err';
+  }
+  sending = false; document.getElementById('sendBtn').disabled = false;
+}
+
+// ─── UI HELPERS ─────────────────────────────────────────────
 function addMsg(role, text) {
   const chat = document.getElementById('chat');
   const div = document.createElement('div');
   div.className = 'msg ' + role;
   const roleLabel = role === 'user' ? 'You' : 'Macro VM';
-  // Convert markdown-like code blocks
-  let html = text.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
-  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-  html = html.replace(/\n/g, '<br>');
+  let html = renderMd(text);
   div.innerHTML = `<div class="role">${roleLabel}</div><div class="content">${html}</div>`;
   chat.appendChild(div);
   chat.scrollTop = chat.scrollHeight;
 }
+
+function addMsgWithTools(text, toolCalls) {
+  const chat = document.getElementById('chat');
+  const div = document.createElement('div');
+  div.className = 'msg agent';
+  // Remove tool call blocks from displayed text
+  let displayText = text.replace(/```(python|search|terminal)\n[\s\S]*?```/g, '').trim();
+  let html = displayText ? renderMd(displayText) : '';
+  // Add tool call blocks
+  for (const tc of toolCalls) {
+    html += `<div class="tool-call" data-tool="${tc.name}" data-code="${escAttr(tc.code)}">
+      <div class="tc-header"><span class="spinner"></span> ${tc.name}</div>
+      <div class="tc-code">${esc(tc.code)}</div>
+    </div>`;
+  }
+  div.innerHTML = `<div class="role">Macro VM</div><div class="content">${html}</div>`;
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+function updateLastToolResult(toolName, result) {
+  const calls = document.querySelectorAll('.tool-call[data-tool="' + toolName + '"]');
+  const last = calls[calls.length - 1];
+  if (!last) return;
+  last.querySelector('.tc-header').innerHTML = '✓ ' + toolName;
+  const resDiv = document.createElement('div');
+  resDiv.className = 'tool-result' + (result.startsWith('Error') ? ' err' : '');
+  resDiv.textContent = result.slice(0, 500) + (result.length > 500 ? '\n... (truncated)' : '');
+  last.appendChild(resDiv);
+}
+
+function renderMd(text) {
+  let h = text.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
+  h = h.replace(/`([^`]+)`/g, '<code>$1</code>');
+  h = h.replace(/\n/g, '<br>');
+  return h;
+}
+
+function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') }
+function escAttr(s) { return esc(s).replace(/'/g,'&#39;') }
 
 function addTyping() {
   const chat = document.getElementById('chat');
   const div = document.createElement('div');
   div.className = 'msg agent';
   div.innerHTML = '<div class="role">Macro VM</div><div class="typing"><span></span><span></span><span></span></div>';
-  chat.appendChild(div);
-  chat.scrollTop = chat.scrollHeight;
+  chat.appendChild(div); chat.scrollTop = chat.scrollHeight;
   return div;
 }
 
-function quickAsk(text) {
-  document.getElementById('askInput').value = text;
-  send();
-}
+function quickAsk(text) { document.getElementById('askInput').value = text; send(); }
 
 // TERMINAL
 function term(text, cls) {
@@ -468,20 +569,14 @@ function term(text, cls) {
   const line = document.createElement('div');
   line.className = 'term-line' + (cls ? ' ' + cls : '');
   line.textContent = text;
-  body.appendChild(line);
-  body.scrollTop = body.scrollHeight;
+  body.appendChild(line); body.scrollTop = body.scrollHeight;
 }
-function toggleTerm() {
-  document.getElementById('termPanel').classList.toggle('open');
-}
-function showSettings() {
-  document.getElementById('onboard').classList.remove('hidden');
-}
+function toggleTerm() { document.getElementById('termPanel').classList.toggle('open') }
+function showSettings() { document.getElementById('onboard').classList.remove('hidden') }
 
 // AUTO-RESIZE TEXTAREA
 document.getElementById('askInput')?.addEventListener('input', function() {
-  this.style.height = 'auto';
-  this.style.height = Math.min(this.scrollHeight, 160) + 'px';
+  this.style.height = 'auto'; this.style.height = Math.min(this.scrollHeight, 160) + 'px';
 });
 </script>
 </body>
